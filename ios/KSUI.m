@@ -1448,7 +1448,14 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls
 
 - (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)s
 {
-    return [@[@2, @4, @2, @(KSConfig.shared.developerUnlocked ? 3 : 2)][s] integerValue];
+    if (s == 3) return 5 + (KSConfig.shared.developerUnlocked ? 1 : 0);
+    return [@[@2, @4, @2][s] integerValue];
+}
+
+- (void)viewWillAppear:(BOOL)animated
+{
+    [super viewWillAppear:animated];
+    [self.table reloadData];
 }
 
 - (UITableViewCell *)cellWithTitle:(NSString *)title detail:(NSString *)detail switchOn:(BOOL)on
@@ -1552,15 +1559,13 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls
     if (ip.row == 2) return [self cellWithTitle:@"协议版本" detail:KS_PROTOCOL_VERSION switchOn:NO];
     if (ip.row == 3) {
         UITableViewCell *cell = [self cellWithTitle:@"用户协议与隐私政策"
-                                             detail:@"已同意"
+                                             detail:(KSConfig.shared.legalAccepted ? @"已同意" : @"未同意")
                                            switchOn:NO];
         cell.textLabel.textColor = KSTheme.shared.accent;
         return cell;
     }
-    if (KSConfig.shared.developerUnlocked && ip.row == 4) {
-        return [self cellWithTitle:@"开发者选项" detail:@"" switchOn:NO];
-    }
-    return [self cellWithTitle:@"配置文件" detail:@"settings.json" switchOn:NO];
+    if (ip.row == 4) return [self cellWithTitle:@"配置文件" detail:@"settings.json" switchOn:NO];
+    return [self cellWithTitle:@"开发者选项" detail:@"" switchOn:NO];
 }
 
 - (void)onKernelLongPress:(UILongPressGestureRecognizer *)g
@@ -1641,9 +1646,12 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls
     __weak typeof(self) weakSelf = self;
     [al addAction:[UIAlertAction actionWithTitle:@"撤销" style:UIAlertActionStyleDestructive
                                           handler:^(UIAlertAction *a) {
-        [KSConfig.shared setLegalAccepted:NO];
+        KSConfig.shared.legalAccepted = NO;
+        [KSConfig.shared save];
         KSLegalPresentIfNeeded(weakSelf, ^{
             [[KSLog shared] info:@"已重新同意协议"];
+            [[KSServer shared] start];
+            [weakSelf.table reloadData];
         });
     }]];
     [self presentViewController:al animated:YES completion:nil];
@@ -1694,12 +1702,38 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls
     if (ip.section == 2 && ip.row == 0) { [self editPort]; return; }
     if (ip.section == 1 && ip.row == 2) { [self editChunk]; return; }
     if (ip.section == 1 && ip.row == 3) { [self editSpeed]; return; }
-    if (ip.section == 3 && ip.row == 1) { [self showConfig]; return; }
-    if (ip.section == 3 && ip.row == 2) {
+    if (ip.section == 3 && ip.row == 3) { [self showLegalSheet]; return; }
+    if (ip.section == 3 && ip.row == 4) { [self showConfig]; return; }
+    if (ip.section == 3 && ip.row == 5 && KSConfig.shared.developerUnlocked) {
         KSDeveloperViewController *dev = [[KSDeveloperViewController alloc] init];
         [self.navigationController pushViewController:dev animated:YES];
         return;
     }
+}
+
+- (void)showLegalSheet
+{
+    UIAlertController *sheet = [UIAlertController
+        alertControllerWithTitle:@"用户协议与隐私政策"
+                         message:@"撤销同意后会立刻回到协议页，未同意不能继续使用。"
+                  preferredStyle:UIAlertControllerStyleActionSheet];
+    [sheet addAction:[UIAlertAction actionWithTitle:@"查看全文" style:UIAlertActionStyleDefault
+                                           handler:^(UIAlertAction *a) {
+        // 已同意时 KSLegalPresentIfNeeded 会直接返回，这里强制打开只读全文
+        UIViewController *legal = KSLegalMakeViewController(^(BOOL accepted) {
+            [self dismissViewControllerAnimated:YES completion:nil];
+            [self.table reloadData];
+        });
+        legal.modalPresentationStyle = UIModalPresentationFullScreen;
+        [self presentViewController:legal animated:YES completion:nil];
+    }]];
+    [sheet addAction:[UIAlertAction actionWithTitle:@"撤销同意" style:UIAlertActionStyleDestructive
+                                           handler:^(UIAlertAction *a) {
+        [self revokeLegal];
+    }]];
+    [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    sheet.popoverPresentationController.sourceView = self.table;
+    [self presentViewController:sheet animated:YES completion:nil];
 }
 
 - (void)editDeviceName
