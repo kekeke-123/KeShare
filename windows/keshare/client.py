@@ -276,7 +276,7 @@ class KSClient(object):
                 except OSError:
                     pass
                 session.send(protocol.hash_resp_message(transfer_id, False, "checksum"))
-                raise KSClientError("SHA-KE-1024 校验失败", "checksum")
+                raise KSClientError("SHA-256 校验失败", "checksum")
             os.replace(part, dest_path)
             session.send(protocol.hash_resp_message(transfer_id, True))
             elapsed = max(0.001, time.time() - started)

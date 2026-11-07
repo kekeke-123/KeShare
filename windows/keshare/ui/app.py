@@ -153,7 +153,7 @@ class KeShareApp(tk.Tk):
         right.pack(side="right", fill="y")
         self.ctl_var = tk.StringVar(value="控制通道: WiFi 回退")
         self.data_var = tk.StringVar(value="数据通道: WiFi")
-        self.integrity_var = tk.StringVar(value="完整性: SHA-KE-1024")
+        self.integrity_var = tk.StringVar(value="完整性: SHA-256")
         ttk.Label(right, textvariable=self.ctl_var, style="Header.TLabel").pack(anchor="e")
         ttk.Label(right, textvariable=self.data_var, style="Header.TLabel").pack(anchor="e")
         ttk.Label(right, textvariable=self.integrity_var, style="Sub.TLabel").pack(anchor="e")

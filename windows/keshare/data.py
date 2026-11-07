@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""DATA channel (WiFi TCP 47377): chunked file transfer + SHA-KE-1024 checks.
+"""DATA channel (WiFi TCP 47377): chunked file transfer + SHA-256 checks.
 
 PROTOCOL.md section 1.2 / 4.0:
 
@@ -210,7 +210,7 @@ def verify_hash(path, claimed_digest, delete_on_fail=True):
                 os.remove(path)
             except OSError:
                 pass
-        raise DataError("SHA-KE-1024 校验失败（期望 %s…，实际 %s…）"
+        raise DataError("SHA-256 校验失败（期望 %s…，实际 %s…）"
                         % (claimed[:16], actual[:16]), "checksum")
     return actual
 

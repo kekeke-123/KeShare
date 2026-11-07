@@ -142,6 +142,7 @@ NSString *KSHashOfData(NSData *data)
             @"chunk_kb": @1024,
             @"concurrency": @4,
             @"resume_keep_days": @7,
+            @"legal": @{ @"accepted": @NO, @"accepted_at": @0 },
             @"socket_buffer_kb": @1024
         },
         @"network": @{
@@ -248,6 +249,9 @@ static void mergeDefaults(NSMutableDictionary *dst, NSDictionary *def)
 - (void)setMaxSpeedKBps:(NSInteger)v { [self setValue:@(v) forPath:@"share.max_speed_kbps"]; }
 - (NSInteger)maxFileMB { return [[self valueForPath:@"share.max_file_mb"] integerValue]; }
 - (void)setMaxFileMB:(NSInteger)v { [self setValue:@(v) forPath:@"share.max_file_mb"]; }
+- (BOOL)legalAccepted { return [[self valueForPath:@"legal.accepted"] boolValue]; }
+- (void)setLegalAccepted:(BOOL)v { [self setValue:@(v) forPath:@"legal.accepted"]; if (v) [self setValue:@([NSDate date].timeIntervalSince1970) forPath:@"legal.accepted_at"]; }
+
 - (NSInteger)resumeKeepDays { return [[self valueForPath:@"share.resume_keep_days"] integerValue] ?: 7; }
 - (void)setResumeKeepDays:(NSInteger)v { [self setValue:@(MAX(0, v)) forPath:@"share.resume_keep_days"]; }
 

@@ -44,6 +44,11 @@ UIColor *KSSystemAccent(void);
 /// SHA-256（CommonCrypto）：完整性摘要与 token 都用它
 NSString *KSSHA256HexOfData(NSData *data);
 NSString *KSSHA256HexOfFile(NSString *path, NSError **error);
+#pragma mark - 法律性文稿（KSLegal.m）
+
+UIViewController *KSLegalMakeViewController(void (^onFinish)(BOOL accepted));
+/// 未同意时以全屏方式弹出；同意后回调 onAccepted
+void KSLegalPresentIfNeeded(UIViewController *host, void (^onAccepted)(void));
 #pragma mark - 断点续传（KSResume.m）
 
 @interface KSResumeStore : NSObject

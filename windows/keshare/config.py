@@ -366,6 +366,10 @@ class Config(object):
         return self.data["ui"]["theme"]
 
     @property
+    def developer_locked(self):
+        return bool(self.data.get("developer", {}).get("locked"))
+
+    @property
     def developer_unlocked(self):
         return bool(self.data["developer"]["unlocked"])
 

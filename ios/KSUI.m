@@ -710,6 +710,23 @@
     [al addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:al animated:YES completion:nil];
 }
+- (void)revokeLegal
+{
+    UIAlertController *al = [UIAlertController
+        alertControllerWithTitle:@"撤销同意"
+                         message:@"撤销后需要重新阅读并同意协议与隐私政策才能继续使用。"
+                  preferredStyle:UIAlertControllerStyleAlert];
+    [al addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    __weak typeof(self) weakSelf = self;
+    [al addAction:[UIAlertAction actionWithTitle:@"撤销" style:UIAlertActionStyleDestructive
+                                          handler:^(UIAlertAction *a) {
+        [KSConfig.shared setLegalAccepted:NO];
+        KSLegalPresentIfNeeded(weakSelf, ^{
+            [[KSLog shared] info:@"已重新同意协议"];
+        });
+    }]];
+    [self presentViewController:al animated:YES completion:nil];
+}
 - (void)tapVersion
 {
     // 主入口模式下，连点版本号不做任何事、不提示，避免暴露入口

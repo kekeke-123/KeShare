@@ -133,7 +133,7 @@ def process_info(config=None, logger=None, server=None, extra=None):
         "machine": platform.machine(),
         "cwd": os.getcwd(),
         "config_path": getattr(config, "path", ""),
-        "integrity": "SHA-KE-1024",
+        "integrity": "SHA-256",
         "digest_hex_chars": 256,
         "share_root": getattr(config, "share_root", ""),
         "receive_dir": getattr(config, "receive_dir", ""),
