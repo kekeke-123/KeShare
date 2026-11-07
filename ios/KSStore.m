@@ -120,6 +120,13 @@ NSString *KSHashOfData(NSData *data)
 
 - (NSString *)configFilePath { return self.configFileURL.path; }
 
+static BOOL KSIsLiteBuild(void)
+{
+    // 同一份二进制产出两个变体：Lite 由 bundle id 区分，采用更激进的传输参数
+    NSString *bid = [NSBundle mainBundle].bundleIdentifier ?: @"";
+    return [bid containsString:@"lite"];
+}
+
 - (NSDictionary *)defaults
 {
     NSString *docs = [[[NSFileManager defaultManager] URLsForDirectory:NSDocumentDirectory
@@ -138,10 +145,10 @@ NSString *KSHashOfData(NSData *data)
             @"allow_clipboard": @YES,
             // Lite 版更激进：更大分块、更高并发、不限速；稳定版保守一些
             @"max_speed_kbps": @0,
-            @"max_file_mb": @(KS_LITE ? 8192 : 2048),
-            @"chunk_kb": @(KS_LITE ? 1024 : 64),
-            @"concurrency": @(KS_LITE ? 4 : 2),
-            @"socket_buffer_kb": @(KS_LITE ? 1024 : 256)
+            @"max_file_mb": @(KSIsLiteBuild() ? 8192 : 2048),
+            @"chunk_kb": @(KSIsLiteBuild() ? 1024 : 64),
+            @"concurrency": @(KSIsLiteBuild() ? 4 : 2),
+            @"socket_buffer_kb": @(KSIsLiteBuild() ? 1024 : 256)
         },
         @"network": @{
             @"port": @(KS_DATA_PORT),
