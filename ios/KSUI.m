@@ -621,6 +621,17 @@
     [h impactOccurred];
     [self promptDeveloperPassword];
 }
+- (NSString *)nextErrorCode
+{
+    // 5 位大写十六进制，来自时间戳与设备 ID 的摘要，便于对日志排查
+    static NSUInteger counter = 0;
+    counter++;
+    NSString *seed = [NSString stringWithFormat:@"%@-%lu-%f",
+                      KSConfig.shared.deviceId ?: @"", (unsigned long)counter,
+                      [NSDate date].timeIntervalSince1970];
+    NSString *digest = KSSHA256HexOfData([seed dataUsingEncoding:NSUTF8StringEncoding]);
+    return [[digest substringToIndex:5] uppercaseString];
+}
 - (void)promptDeveloperPassword
 {
     // 刻意不带标题与说明文字：验证通过前不暴露任何与开发者相关的信息
@@ -645,11 +656,23 @@
             [weakSelf.table reloadData];
             return;
         }
-        // 密码错误：主入口失效，改为「连点版本号 16 次」
-        KSConfig.shared.devGateMode = 1;
-        [KSConfig.shared save];
         UINotificationFeedbackGenerator *bad = [[UINotificationFeedbackGenerator alloc] init];
         [bad notificationOccurred:UINotificationFeedbackTypeError];
+        if (KSConfig.shared.devGateMode == 1) {
+            // 备用入口再次输错：显示错误提示与错误码
+            NSString *code = [weakSelf nextErrorCode];
+            [[KSLog shared] warn:@"开发者入口校验失败（备用入口），错误码 ERROR-%@", code];
+            UIAlertController *err = [UIAlertController
+                alertControllerWithTitle:nil
+                                 message:[NSString stringWithFormat:@"错误！详细信息：\n ERROR-%@", code]
+                          preferredStyle:UIAlertControllerStyleAlert];
+            [err addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];
+            [weakSelf presentViewController:err animated:YES completion:nil];
+            return;
+        }
+        // 主入口密码错误：入口切换为「连点版本号 16 次」，且不提示任何信息
+        KSConfig.shared.devGateMode = 1;
+        [KSConfig.shared save];
         [[KSLog shared] warn:@"开发者入口校验失败，已切换到备用入口"];
     }]];
     [al addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];

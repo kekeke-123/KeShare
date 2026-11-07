@@ -308,13 +308,25 @@ class SettingsTab(ttk.Frame):
                 return
             self._dev_attempts += 1
             password_var.set("")
-            if self._dev_attempts >= 5:
+            code = self._error_code()
+            self.log.warn("开发者密码错误，错误码 ERROR-%s" % (code,))
+            text = "错误！详细信息：\n ERROR-%s" % (code,)
+            if getattr(self, "_dev_fallback", False):
+                # 备用入口再次输错：直接给出错误提示与错误码
                 dialog.destroy()
-                self.hint_var.set("尝试次数过多，请重新连点")
-                self.log.warn("开发者密码连续错误，已退出解锁流程")
-                self._dev_attempts = 0
+                messagebox.showerror("错误", text, parent=self)
+                self._dev_fallback = False
                 return
-            error_var.set("密码不正确（还可尝试 %d 次）" % (5 - self._dev_attempts,))
+            if self._dev_attempts >= 3:
+                # 主入口失效，切换为备用入口（连点 16 次），本次仅显示错误码
+                self._dev_fallback = True
+                self._dev_attempts = 0
+                self.config.set("developer.gate_mode", "taps16")
+                try:
+                    self.config.save()
+                except Exception:
+                    pass
+            error_var.set(text)
 
         entry.bind("<Return>", submit)
 
@@ -330,6 +342,11 @@ class SettingsTab(ttk.Frame):
         cancel.pack(side="left", padx=8)
         dialog.grab_set()
 
+    def _error_code(self):
+        """5 位大写十六进制错误码，便于对日志排查。"""
+        import hashlib, time
+        seed = "%s-%f" % (self.config.device_id or "", time.time())
+        return hashlib.sha256(seed.encode("utf-8")).hexdigest()[:5].upper()
     def _grant_developer(self):
         self._dev_attempts = 0
         self.config.set("developer.unlocked", True)
