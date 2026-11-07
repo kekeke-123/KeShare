@@ -405,6 +405,8 @@
 @end
 
 @implementation KSTransfersViewController
+@implementation KSTransfersViewController
+
 - (void)presentTransferError:(NSString *)reason
 {
     NSString *code = @"Unknown";
@@ -423,27 +425,10 @@
         code = @"Denied";
         message = @"对方拒绝了本次传输！";
     }
-    [self showErrorWithMessage:message code:code
-                          hint:@"对方传输时断开 WIFI、对方传输时没电关机、对方取消传输、对方切到后台等"];
-- (void)showErrorWithMessage:(NSString *)message code:(NSString *)code hint:(NSString *)hint
-{
-    NSString *text = [NSString stringWithFormat:@"错误信息：\n ERROR-%@", code];
-    if (hint.length) {
-        text = [NSString stringWithFormat:@"%@\n常见错误环境：%@", text, hint];
-    }
-    UIAlertController *al = [UIAlertController
-        alertControllerWithTitle:@"错误！！！"
-                         message:text
-                  preferredStyle:UIAlertControllerStyleAlert];
-    [al addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];
-    [self presentViewController:al animated:YES completion:nil];
-    [[KSLog shared] warn:@"%@ (ERROR-%@)", message, code];
+    [self ks_showError:message code:code
+                 hint:@"对方传输时断开 WIFI、对方传输时没电关机、对方取消传输、对方切到后台等"];
 }
 
-- (void)showErrorWithMessage:(NSString *)message code:(NSString *)code
-{
-    [self showErrorWithMessage:message code:code hint:nil];
-}
 
 - (void)viewDidLoad
 {
@@ -1024,3 +1009,78 @@
 @end
 
 
+
+
+#pragma mark - 底部微弹窗
+
+@implementation UIViewController (KSErrorToast)
+
+- (void)ks_showError:(NSString *)message code:(NSString *)code hint:(NSString *)hint
+{
+    NSString *title = @"错误！！！";
+    NSString *body = [NSString stringWithFormat:@"错误信息：\n ERROR-%@", code ?: @"Unknown"];
+    if (hint.length) {
+        body = [NSString stringWithFormat:@"%@\n常见错误环境：%@", body, hint];
+    }
+
+    UIWindow *window = self.view.window ?: UIApplication.sharedApplication.keyWindow;
+    if (!window) return;
+
+    UIView *card = [[UIView alloc] init];
+    card.backgroundColor = [UIColor colorWithRed:0.11 green:0.12 blue:0.16 alpha:0.97];
+    card.layer.cornerRadius = 18;
+    card.layer.cornerCurve = kCACornerCurveContinuous;
+    card.translatesAutoresizingMaskIntoConstraints = NO;
+    card.tag = 88001;
+    card.alpha = 0;
+
+    UILabel *titleLabel = [[UILabel alloc] init];
+    titleLabel.text = title;
+    titleLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightBold];
+    titleLabel.textColor = [UIColor colorWithRed:1 green:0.42 blue:0.42 alpha:1];
+    titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+
+    UILabel *bodyLabel = [[UILabel alloc] init];
+    bodyLabel.text = body;
+    bodyLabel.numberOfLines = 0;
+    bodyLabel.font = [UIFont systemFontOfSize:12.5];
+    bodyLabel.textColor = [UIColor colorWithWhite:1 alpha:0.88];
+    bodyLabel.translatesAutoresizingMaskIntoConstraints = NO;
+
+    [card addSubview:titleLabel];
+    [card addSubview:bodyLabel];
+    [window addSubview:card];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [card.leadingAnchor constraintEqualToAnchor:window.leadingAnchor constant:12],
+        [card.trailingAnchor constraintEqualToAnchor:window.trailingAnchor constant:-12],
+        [card.bottomAnchor constraintEqualToAnchor:window.safeAreaLayoutGuide.bottomAnchor constant:-10],
+        [titleLabel.topAnchor constraintEqualToAnchor:card.topAnchor constant:12],
+        [titleLabel.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:16],
+        [bodyLabel.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:6],
+        [bodyLabel.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:16],
+        [bodyLabel.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-16],
+        [bodyLabel.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-12]
+    ]];
+
+    card.transform = CGAffineTransformMakeTranslation(0, 140);
+    [UIView animateWithDuration:0.32 delay:0 usingSpringWithDamping:0.86 initialSpringVelocity:0.4
+                        options:UIViewAnimationOptionCurveEaseOut animations:^{
+        card.alpha = 1;
+        card.transform = CGAffineTransformIdentity;
+    } completion:nil];
+
+    __weak UIView *weakCard = card;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        [UIView animateWithDuration:0.25 animations:^{
+            weakCard.alpha = 0;
+            weakCard.transform = CGAffineTransformMakeTranslation(0, 120);
+        } completion:^(BOOL done) {
+            [weakCard removeFromSuperview];
+        }];
+    });
+    [[KSLog shared] warn:@"%@ (ERROR-%@)", message, code];
+}
+
+@end
