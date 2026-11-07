@@ -188,11 +188,13 @@ class HazeUI(object):
         return widgets
 
     def _page_list(self, rows, on_select=None, empty_text="暂无内容", empty_hint="",
-                   header_height=126, on_context=None):
+                   header_height=126, on_context=None, bottom=0):
         x, y, w, h = self._content_rect()
         top = y + header_height
-        panel = G.GlassPanel(self, (x, top, w, h - header_height), radius=28, solid_alpha=210)
-        lst = G.GlassList(self, (x + 16, top + 16, w - 32, h - header_height - 32),
+        panel = G.GlassPanel(self, (x, top, w, h - header_height - bottom),
+                             radius=28, solid_alpha=210)
+        lst = G.GlassList(self, (x + 16, top + 16, w - 32,
+                                  h - header_height - 32 - bottom),
                           rows=rows, row_height=64, on_select=on_select,
                           empty_text=empty_text, empty_hint=empty_hint,
                           on_context=on_context)
@@ -716,7 +718,7 @@ class HazeUI(object):
              "right": ""},
         ]
         widgets += self._page_list(rows, empty_text="任务不存在",
-                                   empty_hint="可能已完成并被清理")
+                                   empty_hint="可能已完成并被清理", bottom=112)
 
         # 底部操作：暂停/继续、取消
         pan_top = y + h - 96

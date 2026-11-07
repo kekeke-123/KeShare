@@ -393,7 +393,7 @@
     tr.peerName = self.peer.name;
     tr.direction = KSTransferDirectionDownload;
     tr.state = KSTransferStateWaiting;
-    [self.transfers addObject:tr];
+    [_transfers addObject:tr];
     [[KSTransferCenter shared] track:tr];
     [[NSNotificationCenter defaultCenter] postNotificationName:KSTransfersDidChangeNotification object:tr];
     [self.link sendMessage:@{ @"t": @"get", @"token": self.token ?: @"", @"id": tid, @"path": path }];
@@ -411,7 +411,7 @@
     tr.direction = KSTransferDirectionUpload;
     tr.total = [self fileSize:localPath];
     tr.state = KSTransferStateWaiting;
-    [self.transfers addObject:tr];
+    [_transfers addObject:tr];
     [[KSTransferCenter shared] track:tr];
     [[NSNotificationCenter defaultCenter] postNotificationName:KSTransfersDidChangeNotification object:tr];
 
@@ -473,7 +473,7 @@
         tr.fileName = name;
         tr.peerName = self.peer.name;
         tr.direction = KSTransferDirectionDownload;
-        [self.transfers addObject:tr];
+        [_transfers addObject:tr];
     }
     tr.total = size;
     tr.state = KSTransferStateRunning;
