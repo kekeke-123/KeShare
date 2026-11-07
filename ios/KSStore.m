@@ -266,6 +266,13 @@ static void mergeDefaults(NSMutableDictionary *dst, NSDictionary *def)
 - (void)setAutoAcceptPairing:(BOOL)v { [self setValue:@(v) forPath:@"network.auto_accept_pairing"]; }
 - (NSString *)discoveryMode { return [self valueForPath:@"network.discovery"]; }
 - (void)setDiscoveryMode:(NSString *)v { [self setValue:v forPath:@"network.discovery"]; }
+/// 局域网 HTTP/WebSocket 通道（浏览器直接传文件，不需要热点）。默认开。
+- (BOOL)webAccess
+{
+    id value = [self valueForPath:@"network.web_access"];
+    return value == nil ? YES : [value boolValue];
+}
+- (void)setWebAccess:(BOOL)v { [self setValue:@(v) forPath:@"network.web_access"]; }
 - (NSString *)theme { return [self valueForPath:@"ui.theme"]; }
 - (void)setTheme:(NSString *)v { [self setValue:v forPath:@"ui.theme"]; }
 - (BOOL)developerLocked { return [[self valueForPath:@"developer.locked"] boolValue]; }

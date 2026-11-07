@@ -45,6 +45,7 @@ DEFAULTS = {
         "auto_accept_pairing": False,
         "discovery": "both",
         "bind_address": "0.0.0.0",
+        "web_access": True,
     },
     "ui": {
         "theme": "dark",
@@ -352,6 +353,11 @@ class Config(object):
     @property
     def discovery_mode(self):
         return self.data["network"]["discovery"]
+
+    @property
+    def web_access(self):
+        """局域网 HTTP/WebSocket 通道开关（浏览器直接传文件，不需要热点）。"""
+        return bool(self.data["network"].get("web_access", True))
 
     @property
     def allow_upload(self):

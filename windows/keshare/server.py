@@ -22,7 +22,7 @@ import threading
 import time
 
 from . import KSAPP_NAME, KSAPP_VERSION
-from . import ctl, data, files, protocol
+from . import ctl, data, files, protocol, web
 from .protocol import ProtocolError
 
 
@@ -199,6 +199,11 @@ class KSServer(object):
                 link = ctl.CtlLink(sock, transport="wifi", peer_ip=addr[0],
                                    log=self.log)
                 self._run_ctl(link, addr[0])
+            elif web.looks_like_http(first):
+                # 局域网 HTTP/WebSocket：浏览器直接传文件，不需要热点
+                self.stats["ctl"] += 1
+                web.serve_http(sock, first, addr, self.config, self.log,
+                               emit=self.on_event)
             else:
                 (length,) = struct.unpack(">I", first)
                 if length > protocol.CTL_MAX_JSON:

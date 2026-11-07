@@ -69,6 +69,8 @@
 @property (nonatomic, strong) NSNetService *netService;
 /// 服务端握手（TCP 接入的 hello，在读线程里同步回包）
 - (void)handleServerHello:(NSDictionary *)message link:(KSTcpServerLink *)link;
+/// 网页/WebSocket 传完一个文件后补一条传输记录，让「传输任务」页看得到
+- (void)postWebTransferEvent:(NSDictionary *)info;
 @end
 
 #pragma mark - 服务端控制链路（accepted socket 上的一条 CTL 会话）
@@ -303,7 +305,18 @@
         line[i] = 0;
         NSString *header = [NSString stringWithUTF8String:line];
 
-        // 三路分流：DATA 数据通道 / CTL 控制通道（WiFi 回退）/ 裸长度帧也是控制通道
+        // 四路分流：HTTP/WS（局域网网页传文件）/ DATA / CTL / 裸长度帧
+        if (KSWebLooksLikeHTTP(header)) {
+            [[KSLog shared] info:@"局域网 HTTP 通道接入"];
+            __weak typeof(self) weakSelf = self;
+            KSWebServe(cfd, header, nil, ^(NSDictionary *info) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [[KSLog shared] info:@"网页传输 %@", info[@"name"] ?: @""];
+                    [weakSelf postWebTransferEvent:info];
+                });
+            });
+            return;
+        }
         if ([header hasPrefix:@"CTL "]) {
             [[KSLog shared] info:@"WiFi 回退控制通道接入"];
             [self serveControlSocket:cfd];
@@ -492,7 +505,6 @@
 }
 
 #pragma mark 服务端握手（B 侧：必须回 token，否则 Windows 侧校验直接失败）
-
 - (void)handleServerHello:(NSDictionary *)message link:(KSTcpServerLink *)link
 {
     NSString *peerDid = message[@"did"] ?: @"";
@@ -527,6 +539,25 @@
     };
     [link sendMessage:ack];
     [[KSLog shared] info:@"控制通道接入：%@ (%@) token=%@", d.name, link.remoteIp ?: @"-", token];
+}
+
+#pragma mark 网页 / WebSocket 传输事件
+
+- (void)postWebTransferEvent:(NSDictionary *)info
+{
+    if (![info isKindOfClass:[NSDictionary class]]) return;
+    KSTransfer *tr = [[KSTransfer alloc] init];
+    tr.transferId = [KSRandomHex(4) lowercaseString];
+    tr.fileName = info[@"name"] ?: @"网页传输";
+    tr.peerName = [NSString stringWithFormat:@"浏览器（%@）", info[@"channel"] ?: @"http"];
+    tr.direction = [info[@"direction"] isEqualToString:@"in"]
+        ? KSTransferDirectionDownload : KSTransferDirectionUpload;
+    tr.total = [info[@"size"] unsignedLongLongValue];
+    tr.done = tr.total;
+    tr.state = KSTransferStateDone;
+    tr.verified = YES;
+    tr.path = [KSConfig.shared.receivePath stringByAppendingPathComponent:tr.fileName];
+    [[KSTransferCenter shared] track:tr];
 }
 
 #pragma mark KSControlLinkDelegate（作为接收端）

@@ -1807,7 +1807,7 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls
 - (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)s
 {
     if (s == 3) return 5 + (KSConfig.shared.developerUnlocked ? 1 : 0);
-    return [@[@2, @4, @4][s] integerValue];
+    return [@[@2, @4, @5][s] integerValue];
 }
 
 - (void)viewWillAppear:(BOOL)animated
@@ -1848,6 +1848,20 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls
 {
     KSConfig.shared.autoAcceptPairing = sw.isOn;
     [KSConfig.shared save];
+}
+
+- (void)toggleWebAccess:(UISwitch *)sw
+{
+    KSConfig.shared.webAccess = sw.isOn;
+    [KSConfig.shared save];
+    [self.table reloadData];
+    if (sw.isOn) {
+        NSString *ip = KSIPv4StringLocal();
+        [self showToast:[NSString stringWithFormat:@"浏览器打开 http://%@:%ld/",
+                         ip, (long)KSConfig.shared.port]];
+    } else {
+        [self showToast:@"局域网网页传输已关闭"];
+    }
 }
 
 - (void)editDiscoveryMode
@@ -1919,7 +1933,15 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls
         sw.tag = 7001;
         [sw removeTarget:self action:@selector(toggle:) forControlEvents:UIControlEventValueChanged];
         [sw addTarget:self action:@selector(toggleAutoConnect:) forControlEvents:UIControlEventValueChanged];
-        return cell;
+        if (ip.row == 3) return cell;
+
+        UITableViewCell *webCell = [self cellWithTitle:@"局域网网页传输"
+                                                detail:@"开" switchOn:KSConfig.shared.webAccess];
+        UISwitch *webSwitch = (UISwitch *)webCell.accessoryView;
+        webSwitch.tag = 7003;
+        [webSwitch removeTarget:self action:@selector(toggle:) forControlEvents:UIControlEventValueChanged];
+        [webSwitch addTarget:self action:@selector(toggleWebAccess:) forControlEvents:UIControlEventValueChanged];
+        return webCell;
     }
     // 关于
     if (ip.row == 0) {

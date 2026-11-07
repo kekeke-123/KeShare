@@ -137,6 +137,7 @@ typedef NS_ENUM(NSInteger, KSTransferState) {
 @property (nonatomic, assign) NSInteger port;
 @property (nonatomic, assign) BOOL autoAcceptPairing;
 @property (nonatomic, copy) NSString *discoveryMode;    // both / ble / wifi / off
+@property (nonatomic, assign) BOOL webAccess;           // 局域网 HTTP/WS 通道（不需要热点）
 @property (nonatomic, copy) NSString *theme;            // dark / light / auto
 @property (nonatomic, assign) BOOL developerLocked;          // 错误后永久锁死开发者模式
 @property (nonatomic, assign) NSInteger devGateMode;      // 0=长按内核版本10秒 1=连点版本号16次

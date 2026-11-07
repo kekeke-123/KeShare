@@ -597,6 +597,9 @@ class HazeUI(object):
                  int(self.config_obj.data["share"].get("concurrency", 4))), "right": "›"},
             {"glyph": "settings", "title": "自动接受", "subtitle":
                 "开" if self.config_obj.auto_accept else "关", "right": "›"},
+            {"glyph": "settings", "title": "局域网网页传输",
+             "subtitle": ("开 · %s" % self._haze_web_url()) if self._haze_web_enabled() else "关",
+             "right": "›"},
             {"glyph": "files", "title": "接收目录",
              "subtitle": getattr(self.config_obj, "receive_dir", ""), "right": "›"},
             {"glyph": "about", "title": "版本", "subtitle": G.KS_DISPLAY if hasattr(G, "KS_DISPLAY") else "0.0.1 beta3", "right": "›"},
@@ -607,10 +610,28 @@ class HazeUI(object):
                                    empty_text="没有设置项")
         return widgets
 
+    def _haze_web_enabled(self):
+        try:
+            return bool(getattr(self.config_obj, "web_access", True))
+        except Exception:
+            return True
+
+    def _haze_web_url(self):
+        """局域网直连地址：同一网段的设备用浏览器打开就能传文件。"""
+        from .. import protocol
+        try:
+            ip = protocol.local_ip()
+        except Exception:
+            ip = "127.0.0.1"
+        return "http://%s:%d/" % (ip, self.server.port)
+
     def _haze_setting_selected(self, index, row):
         title = (row or {}).get("title") if isinstance(row, dict) else ""
         if title == "接收目录":
             self._open_share_folder()
+            return
+        if title == "局域网网页传输":
+            self._haze_web_menu()
             return
         if title == "用户协议与隐私政策":
             try:
@@ -620,6 +641,47 @@ class HazeUI(object):
                 self.toast.show("法律条款暂不可用", "", "warn")
             return
         self.show_haze_page("setting_detail", title)
+
+    def _haze_web_menu(self):
+        """局域网 HTTP/WS 通道：开关 + 复制地址。"""
+        from .. import clipboard, protocol
+        url = self._haze_web_url()
+        enabled = self._haze_web_enabled()
+
+        def copy_url():
+            try:
+                clipboard.copy_text(url)
+                self.toast.show("地址已复制", url, "ok")
+            except Exception as exc:
+                self.toast.show("复制失败", str(exc), "error")
+
+        def toggle():
+            try:
+                node = self.config_obj.data.setdefault("network", {})
+                node["web_access"] = not enabled
+                self.config_obj.save()
+                self.server.apply_settings()
+                self.toast.show("已" + ("关闭" if enabled else "开启") + "网页传输",
+                                "开关即时生效，端口不变", "ok")
+            except Exception as exc:
+                self.toast.show("切换失败", str(exc), "error")
+            self.show_haze_page("settings")
+
+        def open_browser():
+            try:
+                import webbrowser
+                webbrowser.open(url)
+            except Exception as exc:
+                self.toast.show("打不开浏览器", str(exc), "error")
+
+        items = [
+            ("复制地址", copy_url),
+            ("在浏览器打开", open_browser),
+            ("‑", None),
+            ("关闭网页传输" if enabled else "开启网页传输", toggle),
+        ]
+        px, py = self.winfo_pointerxy()
+        self._popup_menu(px, py, [x for x in items if x[1] is not None or x[0] == "‑"])
 
     # ---------------------------------------------------------------- 设置子页
     # 字段定义：(显示名, config 路径, 类型, 提示)

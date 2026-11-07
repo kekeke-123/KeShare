@@ -101,6 +101,13 @@ void KSLegalPresentIfNeeded(UIViewController *host, void (^onAccepted)(void));
 void KSDiscoveryStart(void);
 void KSDiscoveryStop(void);
 
+#pragma mark - 局域网 HTTP / WebSocket 通道（KSWeb.m）
+
+/// 首行是否像 HTTP 请求（GET / PUT / HEAD ...）
+BOOL KSWebLooksLikeHTTP(NSString *firstLine);
+/// 处理一条 HTTP 或 WebSocket 连接；firstLine 是已经读掉的首行
+void KSWebServe(int fd, NSString *firstLine, NSString *peerIp, void (^emit)(NSDictionary *info));
+
 #pragma mark - 网络小工具（KSInternal.m 里实现）
 
 BOOL KSReadFull(int fd, void *buf, size_t len);
