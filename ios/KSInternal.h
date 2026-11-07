@@ -37,7 +37,7 @@ UIColor *KSSystemAccent(void);
 @end
 
 /// KSServer 的蓝牙发现入口（实现在 KSNetData.m）
-@interface KSServer (Discovery)
+@interface KSServer (Sessions)\n@property (nonatomic, strong) NSMutableDictionary<NSString *, KSSession *> *sessions;\n@end\n\n@interface KSServer (Discovery)
 - (nullable id<KSDiscoveryLink>)bleLink;
 - (void)autoConnectKnownPeers;
 @end

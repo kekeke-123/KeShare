@@ -291,7 +291,7 @@
 
 #pragma mark - 文件
 
-@interface KSFilesViewController () <UITableViewDataSource, UITableViewDelegate>
+@interface KSFilesViewController () <UITableViewDataSource, UITableViewDelegate, UIDocumentPickerDelegate>
 @property (nonatomic, strong) UITableView *table;
 @property (nonatomic, strong) UISegmentedControl *segment;
 @property (nonatomic, strong) NSArray<NSString *> *files;
@@ -334,6 +334,110 @@
     [self reload];
 }
 
+#pragma mark - 导入与发送
+
+- (void)importTapped
+{
+    UIDocumentPickerViewController *picker =
+        [[UIDocumentPickerViewController alloc] initWithDocumentTypes:@[@"public.item"]
+                                                              inMode:UIDocumentPickerModeImport];
+    picker.allowsMultipleSelection = YES;
+    picker.delegate = self;
+    [self presentViewController:picker animated:YES completion:nil];
+}
+
+- (void)documentPicker:(UIDocumentPickerViewController *)controller
+didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls
+{
+    NSString *root = KSConfig.shared.shareRoot;
+    [[NSFileManager defaultManager] createDirectoryAtPath:root
+                              withIntermediateDirectories:YES attributes:nil error:NULL];
+    NSMutableArray<NSString *> *copied = [NSMutableArray array];
+    for (NSURL *url in urls) {
+        NSString *name = url.lastPathComponent;
+        NSString *dest = [root stringByAppendingPathComponent:name];
+        [[NSFileManager defaultManager] removeItemAtPath:dest error:NULL];
+        NSError *err = nil;
+        if ([[NSFileManager defaultManager] copyItemAtPath:url.path toPath:dest error:&err]) {
+            [copied addObject:dest];
+        } else {
+            [[KSLog shared] error:@"导入失败: %@", err.localizedDescription];
+        }
+    }
+    [self reload];
+    if (copied.count == 0) return;
+
+    // 有已连接设备就直接发，否则提示去连接
+    NSArray<KSSession *> *peers = [self connectedSessions];
+    if (peers.count == 0) {
+        UIAlertController *al = [UIAlertController alertControllerWithTitle:@"已导入"
+                                                                    message:@"文件已放入共享目录。请先在“附近设备”连接对方后再发送。"
+                                                             preferredStyle:UIAlertControllerStyleAlert];
+        [al addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];
+        [self presentViewController:al animated:YES completion:nil];
+        return;
+    }
+    for (NSString *path in copied) {
+        for (KSSession *session in peers) {
+            [session uploadFileAtPath:path];
+        }
+    }
+    [self filesToast:[NSString stringWithFormat:@"已发送 %lu 个文件到 %lu 台设备",
+                     (unsigned long)copied.count, (unsigned long)peers.count]];
+}
+
+- (NSArray<KSSession *> *)connectedSessions
+{
+    NSMutableArray *out = [NSMutableArray array];
+    for (KSSession *session in KSServer.shared.sessions.allValues) {
+        if (session.link && session.link.isOpen) [out addObject:session];
+    }
+    return out;
+}
+
+- (void)promptSendPath:(NSString *)path
+{
+    NSArray<KSSession *> *peers = [self connectedSessions];
+    if (peers.count == 0) {
+        [self filesToast:@"还没有已连接的设备"];
+        return;
+    }
+    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"发送到"
+                                                                  message:nil
+                                                           preferredStyle:UIAlertControllerStyleActionSheet];
+    for (KSSession *session in peers) {
+        NSString *title = session.peer.name ?: @"未命名设备";
+        [sheet addAction:[UIAlertAction actionWithTitle:title style:UIAlertActionStyleDefault
+                                               handler:^(UIAlertAction *a) {
+            [session uploadFileAtPath:path];
+            [self filesToast:@"已加入发送队列"];
+        }]];
+    }
+    [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    sheet.popoverPresentationController.sourceView = self.table;
+    [self presentViewController:sheet animated:YES completion:nil];
+}
+- (void)filesToast:(NSString *)text
+{
+    UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 260, 36)];
+    label.text = text;
+    label.textAlignment = NSTextAlignmentCenter;
+    label.textColor = UIColor.whiteColor;
+    label.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
+    label.backgroundColor = [UIColor colorWithWhite:0.1 alpha:0.92];
+    label.layer.cornerRadius = 18;
+    label.layer.cornerCurve = kCACornerCurveContinuous;
+    label.clipsToBounds = YES;
+    label.center = CGPointMake(self.view.bounds.size.width / 2,
+                               self.view.bounds.size.height - 90);
+    label.autoresizingMask = UIViewAutoresizingFlexibleTopMargin;
+    [self.view addSubview:label];
+    [UIView animateWithDuration:0.25 delay:1.8 options:0 animations:^{
+        label.alpha = 0;
+    } completion:^(BOOL done) {
+        [label removeFromSuperview];
+    }];
+}
 - (NSString *)currentDir
 {
     return self.segment.selectedSegmentIndex == 0 ? KSConfig.shared.shareRoot : KSConfig.shared.receivePath;
@@ -387,6 +491,9 @@
     UIAlertController *sheet = [UIAlertController alertControllerWithTitle:name
                                                                   message:KSFormatBytes(KSFileSize(path))
                                                            preferredStyle:UIAlertControllerStyleActionSheet];
+    [sheet addAction:[UIAlertAction actionWithTitle:@"发送到…" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
+        [self promptSendPath:path];
+    }]];
     [sheet addAction:[UIAlertAction actionWithTitle:@"分享" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
         UIActivityViewController *av = [[UIActivityViewController alloc]
             initWithActivityItems:@[[NSURL fileURLWithPath:path]] applicationActivities:nil];
