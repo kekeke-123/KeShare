@@ -60,7 +60,15 @@ app: $(APP_DIR)/$(APP) $(EXT_DIR)/$(EXT)
 $(APP_DIR)/$(APP): $(OBJ) Info.plist
 	@mkdir -p $(APP_DIR)
 	$(SWIFTC) $(SWIFTFLAGS) -emit-object -o $(OUT)/KSActivityManager.o $(SRC_SWIFT)
-	$(CLANG) $(LDFLAGS) $(OBJ) $(OUT)/KSActivityManager.o -o $(APP_DIR)/$(APP)
+	# 用 swiftc 作为链接驱动：它会自动带上 Swift 运行时与 rpath
+	$(SWIFTC) -target $(TARGET) -sdk $(SDK) -O \
+		$(OBJ) $(OUT)/KSActivityManager.o \
+		-framework UIKit -framework Foundation -framework CoreBluetooth \
+		-framework CoreGraphics -framework QuartzCore -framework Security \
+		-framework Network -framework ActivityKit -framework WidgetKit \
+		-framework SwiftUI -framework UniformTypeIdentifiers \
+		-Xlinker -rpath -Xlinker /usr/lib/swift \
+		-o $(APP_DIR)/$(APP)
 	@cp Info.plist $(APP_DIR)/Info.plist
 	@plutil -replace CFBundleShortVersionString -string "$(VERSION)" $(APP_DIR)/Info.plist
 	@plutil -replace CFBundleVersion -string "$(BUILD)" $(APP_DIR)/Info.plist
@@ -88,4 +96,5 @@ ipa: app
 
 clean:
 	@rm -rf $(OUT)
+
 
