@@ -33,19 +33,23 @@ jobs:
           gradle assembleDebug --no-daemon --stacktrace 2>&1 | tee /tmp/build.log
 
       - name: 显示产物
-        run: ls -la android/app/build/outputs/apk/debug/
+        run: |
+          find android -name '*.apk' -print
+          find android -name '*.apk' | head -1 | xargs -r ls -la
 
       - name: 上传 artifacts
         uses: actions/upload-artifact@v4
         with:
           name: KeShare-android-${{ github.run_number }}
-          path: android/app/build/outputs/apk/debug/*.apk
+          path: android/**/*.apk
           retention-days: 30
 
       - name: 推送 APK 到 android-artifacts 分支
         if: success()
         run: |
-          cp android/app/build/outputs/apk/debug/*.apk "$RUNNER_TEMP/KeShare-android.apk"
+          APK=$(find android -name "*.apk" | head -1)
+          echo "APK=$APK"
+          cp "$APK" "$RUNNER_TEMP/KeShare-android.apk"
           cd "$RUNNER_TEMP"
           rm -rf pub && mkdir pub && cd pub
           git init -q
