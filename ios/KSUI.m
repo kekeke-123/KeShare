@@ -405,6 +405,45 @@
 @end
 
 @implementation KSTransfersViewController
+- (void)presentTransferError:(NSString *)reason
+{
+    NSString *code = @"Unknown";
+    NSString *message = reason ?: @"传输失败";
+    if ([reason containsString:@"离线"] || [reason containsString:@"超时"] ||
+        [reason containsString:@"连接"] || [reason containsString:@"断开"]) {
+        code = @"FrontOFF";
+        message = @"对方设备暂时离线！请稍后再试！";
+    } else if ([reason containsString:@"校验"] || [reason containsString:@"摘要"]) {
+        code = @"HashFail";
+        message = @"文件完整性校验未通过！请重新传输！";
+    } else if ([reason containsString:@"空间"] || [reason containsString:@"存储"]) {
+        code = @"NoSpace";
+        message = @"设备存储空间不足！";
+    } else if ([reason containsString:@"拒绝"] || [reason containsString:@"denied"]) {
+        code = @"Denied";
+        message = @"对方拒绝了本次传输！";
+    }
+    [self showErrorWithMessage:message code:code
+                          hint:@"对方传输时断开 WIFI、对方传输时没电关机、对方取消传输、对方切到后台等"];
+- (void)showErrorWithMessage:(NSString *)message code:(NSString *)code hint:(NSString *)hint
+{
+    NSString *text = [NSString stringWithFormat:@"错误信息：\n ERROR-%@", code];
+    if (hint.length) {
+        text = [NSString stringWithFormat:@"%@\n常见错误环境：%@", text, hint];
+    }
+    UIAlertController *al = [UIAlertController
+        alertControllerWithTitle:@"错误！！！"
+                         message:text
+                  preferredStyle:UIAlertControllerStyleAlert];
+    [al addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];
+    [self presentViewController:al animated:YES completion:nil];
+    [[KSLog shared] warn:@"%@ (ERROR-%@)", message, code];
+}
+
+- (void)showErrorWithMessage:(NSString *)message code:(NSString *)code
+{
+    [self showErrorWithMessage:message code:code hint:nil];
+}
 
 - (void)viewDidLoad
 {

@@ -320,7 +320,9 @@ class KeShareApp(tk.Tk):
             self._update_channel_labels()
             self.status_var.set("控制通道已连接 %s" % (client.peer_name,))
         elif kind == "connect_failed":
-            messagebox.showerror("连接失败", payload.get("err") or "未知错误",
+            messagebox.showerror("错误！！！",
+                                 "错误信息：\n ERROR-FrontOFF\n常见错误环境：对方断开 WIFI、"
+                                 "对方没电关机、对方取消传输、对方切到后台等\n\n详情：%s" % (payload.get("err") or "",),
                                  parent=self)
             self.device_hint.set("连接失败: %s" % (payload.get("err") or "",))
             self._client = None
