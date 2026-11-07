@@ -67,9 +67,7 @@ class KeShareApp(tk.Tk):
         self._remote_browser = None
         self.palette = glass.DARK if config.theme == "dark" else glass.LIGHT
         glass.apply_tk_scaling(self)
-        ui_cfg = config.data.get("ui", {})
-        self.thermal = glass.ThermalGuard(enabled=bool(ui_cfg.get("thermal_auto", False)))
-        self.thermal.on_change(lambda level: self.after(0, self._on_thermal_change))
+        # 磨砂玻璃开销低，不做温控降质
 
         self.title("%s %s" % (KSAPP_NAME, KSAPP_DISPLAY))
         self.geometry("1000x660")
@@ -299,9 +297,6 @@ class KeShareApp(tk.Tk):
             return "frosted"
         if mode == "liquid":
             return "liquid"
-        guard = getattr(self, "thermal", None)
-        if guard is not None and guard.enabled and guard.level == "frosted":
-            return "frosted"
         return "liquid"
 
     def _build_devices_tab(self):

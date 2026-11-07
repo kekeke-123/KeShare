@@ -32,8 +32,8 @@ HAZE_NAME = "Haze"
 
 # Haze 设计令牌（三端共用同一组数值，改这里即三端同改）
 HAZE = {
-    "radius_panel": 22,      # 卡片圆角
-    "radius_pill": 34,       # 胶囊圆角
+    "radius_panel": 26,      # 卡片圆角（Haze 偏圆）
+    "radius_pill": 40,       # 胶囊圆角
     "blur": 12.0,            # 背景模糊半径
     "alpha": 0.62,           # 底色权重（0 全透 / 1 实心）
     "noise": 1.8,            # 颗粒噪点强度

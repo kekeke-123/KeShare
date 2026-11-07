@@ -72,8 +72,8 @@ class GlassTheme(object):
     err = (248, 113, 113)
 
     tint = (18, 24, 38)          # 磨砂玻璃底色
-    radius_panel = 22
-    radius_pill = 34
+    radius_panel = 26
+    radius_pill = 40
     pad = 16
 
     @classmethod
@@ -179,6 +179,23 @@ def draw_glyph(surface, name, cx, cy, size=9, color=None):
         draw.ellipse([cx - 1.5, cy - s * 0.6, cx + 1.5, cy - s * 0.6 + 3], fill=color)
     else:
         draw.ellipse([cx - 3, cy - 3, cx + 3, cy + 3], fill=color)
+
+# ---------------------------------------------------------------- 动画
+def approach(current, target, dt, speed=14.0):
+    """指数平滑：每帧向目标逼近，用于 hover / 选中 / 指示条等过渡。
+
+    比动画队列简单得多：不需要维护状态机，帧率变化也不会跳变。
+    """
+    if dt <= 0:
+        return current
+    return current + (target - current) * min(1.0, dt * speed)
+
+
+def ease_out_cubic(t):
+    t = max(0.0, min(1.0, t))
+    return 1.0 - (1.0 - t) ** 3
+
+
 # ---------------------------------------------------------------- 控件
 class GlassWidget(object):
     def __init__(self, app, rect, radius=GlassTheme.radius_panel):
@@ -260,6 +277,14 @@ class GlassWidget(object):
                 return True
         return False
 
+    def step_anims(self, dt):
+        """推进自身动画；返回 True 表示仍在变化（需要继续重绘）。"""
+        moving = False
+        for child in self.children:
+            if child.step_anims(dt):
+                moving = True
+        return moving
+
 
 class GlassPanel(GlassWidget):
     """玻璃容器：先合成玻璃，再画子控件。"""
@@ -319,6 +344,17 @@ class GlassButton(GlassWidget):
         self.kind = kind
         self.accent = accent
         self.size = size
+        self._hover_t = 0.0
+        self._press_t = 0.0
+
+    def step_anims(self, dt):
+        moving = super().step_anims(dt)
+        nh = approach(self._hover_t, 1.0 if self._hover else 0.0, dt, 18.0)
+        np_ = approach(self._press_t, 1.0 if self._pressed else 0.0, dt, 26.0)
+        if abs(nh - self._hover_t) > 0.002 or abs(np_ - self._press_t) > 0.002:
+            moving = True
+        self._hover_t, self._press_t = nh, np_
+        return moving
 
     def draw_self(self, surface):
         if self.accent:
@@ -331,7 +367,8 @@ class GlassButton(GlassWidget):
             color = (12, 18, 30)
         else:
             # 实心按钮：玻璃做按钮底在深色背景上会发白，导致白底白字
-            base = (26, 34, 50) if not self._hover else (36, 46, 66)
+            base = (int(26 + 10 * self._hover_t), int(34 + 12 * self._hover_t), int(50 + 16 * self._hover_t))
+            base = (int(26 + 10 * self._hover_t), int(34 + 12 * self._hover_t), int(50 + 16 * self._hover_t))
             surface.rounded(self.rect, self.radius, fill=base + (238,),
                             outline=(255, 255, 255, 62), width=1)
             color = GlassTheme.fg
@@ -394,11 +431,11 @@ class GlassList(GlassWidget):
             if ry + rh < self.y or ry > self.y + self.h:
                 continue
             if i == self.selected:
-                surface.rounded((rx + 6, ry + 4, rw - 12, rh - 8), 14,
+                surface.rounded((rx + 6, ry + 4, rw - 12, rh - 8), 18,
                                 fill=GlassTheme.accent + (46,),
                                 outline=GlassTheme.accent + (90,), width=1)
             elif i == self.hover_row:
-                surface.rounded((rx + 6, ry + 4, rw - 12, rh - 8), 14,
+                surface.rounded((rx + 6, ry + 4, rw - 12, rh - 8), 18,
                                 fill=(255, 255, 255, 16))
 
             glyph = row.get("glyph", "")
@@ -484,13 +521,13 @@ class GlassSidebar(GlassWidget):
             rx, ry, rw, rh = self._item_rect(i)
             active = (i == self.selected)
             if active:
-                surface.rounded((rx, ry, rw, rh), 14,
+                surface.rounded((rx, ry, rw, rh), 18,
                                 fill=GlassTheme.accent + (48,),
                                 outline=GlassTheme.accent + (110,), width=1)
                 surface.rounded((rx - 8, ry + 12, 3, rh - 24), 2,
                                 fill=GlassTheme.accent + (255,))
             elif i == self.hover:
-                surface.rounded((rx, ry, rw, rh), 14, fill=(255, 255, 255, 14))
+                surface.rounded((rx, ry, rw, rh), 18, fill=(255, 255, 255, 14))
 
             color = GlassTheme.fg if active else GlassTheme.muted
             draw_glyph(surface, item.get("glyph", ""), rx + 26, ry + rh / 2, 8, color)
@@ -624,7 +661,18 @@ class GlassApp(tk.Tk):
         return frame.convert("RGB")
 
     def _tick(self):
+        # 先注册下一帧：本帧即使抛异常，渲染时钟也不会停
+        self.after(16, self._tick)
         now = time.time()
+        dt = max(0.0, min(0.1, now - getattr(self, "_last_tick", now)))
+        self._last_tick = now
+        try:
+            for widget in self.roots:
+                if widget.step_anims(dt):
+                    self.invalidate()
+        except Exception as exc:
+            self._anim_error = repr(exc)
+
         if self._dirty and (now - self._last_draw) >= 1.0 / self._fps:
             self._last_draw = now
             self._dirty = False
@@ -632,9 +680,11 @@ class GlassApp(tk.Tk):
                 image = self.render_frame()
                 self._photo = ImageTk.PhotoImage(image)
                 self.canvas.itemconfigure(self._image_item, image=self._photo)
-            except Exception:
-                pass
-        self.after(16, self._tick)
+                self._last_size = image.size
+            except Exception as exc:
+                import traceback
+                self._render_error = repr(exc)
+                traceback.print_exc()
 
     def run(self):
         self.mainloop()
