@@ -88,7 +88,7 @@
     // 数据发完，经控制通道声明摘要
     NSString *hash = KSHashOfFile(path, NULL);
     pt.awaitingAck = YES;
-    [[(id)self controlLink] sendMessage:@{ @"t": @"hash",
+    [self.controlLink sendMessage:@{ @"t": @"hash",
                                            @"id": pt.transferId ?: @"",
                                            @"hash": hash ?: @"",
                                            @"size": @(total) }];

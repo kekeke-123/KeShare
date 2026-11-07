@@ -70,6 +70,8 @@ NSString *KSIPv4StringLocal(void);
 
 /// KSServer 的发送/请求处理（实现在 KSNetServe.m）
 @interface KSServer (Serve)
+@property (nonatomic, strong, nullable) id<KSControlLink> controlLink;
+- (void)addPeer:(KSDevice *)peer;
 - (void)serveTransfer:(KSPendingTransfer *)pt onSocket:(int)fd;
 - (void)handleGetRequest:(NSDictionary *)msg link:(id<KSControlLink>)link;
 - (void)handlePutOffer:(NSDictionary *)msg link:(id<KSControlLink>)link;
