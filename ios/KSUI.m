@@ -1804,7 +1804,7 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls
 - (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)s
 {
     if (s == 3) return 5 + (KSConfig.shared.developerUnlocked ? 1 : 0);
-    return [@[@2, @4, @2][s] integerValue];
+    return [@[@2, @4, @4][s] integerValue];
 }
 
 - (void)viewWillAppear:(BOOL)animated
@@ -1841,6 +1841,37 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls
     if (sw.isOn) [[KSServer shared] autoConnectKnownPeers];
 }
 
+- (void)toggleAutoAccept:(UISwitch *)sw
+{
+    KSConfig.shared.autoAcceptPairing = sw.isOn;
+    [KSConfig.shared save];
+}
+
+- (void)editDiscoveryMode
+{
+    UIAlertController *sheet = [UIAlertController
+        alertControllerWithTitle:@"发现方式"
+                         message:@"both = 蓝牙 + 局域网；ble 只走蓝牙；wifi 只走局域网"
+                  preferredStyle:UIAlertControllerStyleActionSheet];
+    for (NSString *mode in @[@"both", @"ble", @"wifi", @"off"]) {
+        NSString *label = mode;
+        if ([mode isEqualToString:@"both"]) label = @"both（蓝牙 + 局域网）";
+        if ([mode isEqualToString:@"ble"]) label = @"ble（只走蓝牙）";
+        if ([mode isEqualToString:@"wifi"]) label = @"wifi（只走局域网）";
+        if ([mode isEqualToString:@"off"]) label = @"off（关闭发现）";
+        [sheet addAction:[UIAlertAction actionWithTitle:label style:UIAlertActionStyleDefault
+                                               handler:^(UIAlertAction *a) {
+            KSConfig.shared.discoveryMode = mode;
+            [KSConfig.shared save];
+            [[KSServer shared] restart];
+            [self.table reloadData];
+        }]];
+    }
+    [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    sheet.popoverPresentationController.sourceView = self.table;
+    [self presentViewController:sheet animated:YES completion:nil];
+}
+
 - (void)toggle:(UISwitch *)sw
 {
     CGPoint p = [sw convertPoint:CGPointZero toView:self.table];
@@ -1867,17 +1898,25 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls
     }
     if (ip.section == 2) {
         if (ip.row == 0) return [self cellWithTitle:@"端口" detail:@(KSConfig.shared.port).stringValue switchOn:NO];
+        if (ip.row == 1) return [self cellWithTitle:@"发现方式" detail:KSConfig.shared.discoveryMode switchOn:NO];
         if (ip.row == 2) {
-            UITableViewCell *cell = [self cellWithTitle:@"自动连接历史设备"
-                                                 detail:KSConfig.shared.autoConnect ? @"开" : @"关"
-                                               switchOn:KSConfig.shared.autoConnect];
+            UITableViewCell *cell = [self cellWithTitle:@"自动接受配对"
+                                                 detail:KSConfig.shared.autoAcceptPairing ? @"开" : @"关"
+                                               switchOn:KSConfig.shared.autoAcceptPairing];
             UISwitch *sw = (UISwitch *)cell.accessoryView;
-            sw.tag = 7001;
+            sw.tag = 7002;
             [sw removeTarget:self action:@selector(toggle:) forControlEvents:UIControlEventValueChanged];
-            [sw addTarget:self action:@selector(toggleAutoConnect:) forControlEvents:UIControlEventValueChanged];
+            [sw addTarget:self action:@selector(toggleAutoAccept:) forControlEvents:UIControlEventValueChanged];
             return cell;
         }
-        return [self cellWithTitle:@"发现方式" detail:KSConfig.shared.discoveryMode switchOn:NO];
+        UITableViewCell *cell = [self cellWithTitle:@"自动连接历史设备"
+                                             detail:KSConfig.shared.autoConnect ? @"开" : @"关"
+                                           switchOn:KSConfig.shared.autoConnect];
+        UISwitch *sw = (UISwitch *)cell.accessoryView;
+        sw.tag = 7001;
+        [sw removeTarget:self action:@selector(toggle:) forControlEvents:UIControlEventValueChanged];
+        [sw addTarget:self action:@selector(toggleAutoConnect:) forControlEvents:UIControlEventValueChanged];
+        return cell;
     }
     // 关于
     if (ip.row == 0) {
@@ -2055,6 +2094,7 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls
     [tv deselectRowAtIndexPath:ip animated:YES];
     if (ip.section == 0 && ip.row == 0) { [self editDeviceName]; return; }
     if (ip.section == 2 && ip.row == 0) { [self editPort]; return; }
+    if (ip.section == 2 && ip.row == 1) { [self editDiscoveryMode]; return; }
     if (ip.section == 1 && ip.row == 2) { [self editChunk]; return; }
     if (ip.section == 1 && ip.row == 3) { [self editSpeed]; return; }
     if (ip.section == 3 && ip.row == 3) { [self showLegalSheet]; return; }

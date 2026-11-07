@@ -444,7 +444,8 @@ class HazeUI(object):
     def _page_transfers(self):
         widgets = self._page_header(
             "传输任务",
-            actions=[("全部取消", self._haze_cancel_all, False)],
+            actions=[("全部暂停", self._haze_pause_all, False),
+                     ("全部取消", self._haze_cancel_all, False)],
             subtitle=self._haze_transfer_summary(),
         )
         widgets += self._page_list(
@@ -539,6 +540,19 @@ class HazeUI(object):
             tasks = []
         active = [t for t in tasks if t.get("state") in ("进行中", "校验中", "等待", "暂停")]
         return "%d 个进行中 / 共 %d 个" % (len(active), len(tasks))
+
+    def _haze_pause_all(self):
+        try:
+            n = 0
+            for x in list(self.registry.items()):
+                if x.done or x.paused or x.cancelled:
+                    continue
+                if self.registry.pause(x.tid):
+                    n += 1
+            self.toast.show("已暂停 %d 个任务" % n, "「全部取消」旁边的按钮可逐个继续", "warn")
+        except Exception as exc:
+            self.toast.show("暂停失败", str(exc), "error")
+        self.show_haze_page("transfers")
 
     def _haze_cancel_all(self):
         try:
