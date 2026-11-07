@@ -153,6 +153,56 @@
 
     [link sendMessage:@{ @"t": @"put_resp", @"ok": @YES, @"id": tid }];
     [[KSLog shared] info:@"对端要推送 %@（%llu 字节）", name, size];
+
+    // 协议 §4.0：接收方主动发起数据连接。
+    // 对端地址优先取 put_offer 里带的 host/port，否则回退到已知设备表。
+    NSString *host = msg[@"host"];
+    uint16_t port = (uint16_t)[msg[@"port"] unsignedShortValue];
+    if (host.length == 0 || port == 0) {
+        NSString *did = msg[@"did"] ?: @"";
+        for (KSDevice *d in [KSServer shared].peers) {
+            if (did.length == 0 || [d.deviceId isEqualToString:did]) {
+                host = d.host;
+                port = d.port;
+                break;
+            }
+        }
+    }
+    if (host.length == 0 || port == 0) {
+        [[KSLog shared] warn:@"推送 %@ 缺少对端地址，无法接收", tid];
+        return;
+    }
+
+    NSString *dest = pt.finalPath;
+    NSString *dataToken = msg[@"token"] ?: @"";\n    [KSDataReceiver receiveFromHost:host port:port token:dataToken
+                         transferId:tid size:size destination:dest
+                         onProgress:^(unsigned long long done) {
+        KSTransfer *pub = pt.publicTransfer;
+        if (pub) {
+            pub.done = done;
+            pub.state = KSTransferStateRunning;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [[NSNotificationCenter defaultCenter] postNotificationName:KSTransfersDidChangeNotification object:pub];
+            });
+        }
+    } completion:^(NSString *tempPath, NSString *error) {
+        KSTransfer *pub = pt.publicTransfer;
+        if (error) {
+            if (pub) {
+                pub.state = KSTransferStateFailed;
+                pub.errorText = error;
+            }
+            [[KSLog shared] error:@"接收 %@ 失败: %@", tid, error];
+        } else {
+            if (pub) pub.state = KSTransferStateVerifying;
+            [[KSLog shared] info:@"接收 %@ 数据完成，等待哈希", tid];
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (pub) {
+                [[NSNotificationCenter defaultCenter] postNotificationName:KSTransfersDidChangeNotification object:pub];
+            }
+        });
+    }];
 }
 
 - (void)handleHashAck:(NSDictionary *)msg

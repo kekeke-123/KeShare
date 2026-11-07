@@ -10,7 +10,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-#define KS_VERSION_STRING   @"0.0.1 beta1"
+#define KS_VERSION_STRING   @"0.0.1 beta3"
 #define KS_KERNEL_VERSION  @"0.0.1-beta1+kernel.1"   // 内核（协议实现）版本
 #define KS_PROTOCOL_VERSION @"KS/1"
 #define KS_BUILD_STRING     @"1"

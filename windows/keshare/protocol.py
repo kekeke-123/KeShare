@@ -377,9 +377,15 @@ def get_resp_message(transfer_id, ok, size=0, name="", err=None):
     return msg
 
 
-def put_offer_message(transfer_id, name, size):
-    return {"t": M_PUT_OFFER, "id": str(transfer_id), "name": str(name),
-            "size": int(size or 0)}
+def put_offer_message(transfer_id, name, size, host=None, port=None):
+    """推送请求。带上本机 host/port，接收方才知道该连回哪里（协议 §4.0）。"""
+    msg = {"t": M_PUT_OFFER, "id": str(transfer_id), "name": str(name),
+           "size": int(size or 0)}
+    if host:
+        msg["host"] = str(host)
+    if port:
+        msg["port"] = int(port)
+    return msg
 
 
 def put_resp_message(transfer_id, ok, err=None):

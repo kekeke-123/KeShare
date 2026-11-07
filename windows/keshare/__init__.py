@@ -39,7 +39,7 @@ Modules
 
 KSAPP_NAME = "KeShare"
 KSAPP_VERSION = "0.0.1"
-KSAPP_STAGE = "beta1"                      # alpha.N / beta.N / rc.N
+KSAPP_STAGE = "beta3"                      # alpha.N / beta.N / rc.N
 KSAPP_DISPLAY = "%s %s" % (KSAPP_VERSION, KSAPP_STAGE)
 KSPROTO_VERSION = 1
 KS_PORT = 47377
