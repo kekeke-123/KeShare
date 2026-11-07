@@ -47,9 +47,23 @@
 
     [self buildOfflineBanner];
 
+    // 下拉刷新：触发一次 UDP/BLE 重新扫描（状态码 001）
+    UIRefreshControl *pull = [[UIRefreshControl alloc] init];
+    [pull addTarget:self action:@selector(pullToRefresh:) forControlEvents:UIControlEventValueChanged];
+    self.table.refreshControl = pull;
+
     [[NSNotificationCenter defaultCenter] addObserver:self.table selector:@selector(reloadData)
                                                  name:KSPeersDidChangeNotification object:nil];
     [self refresh];
+}
+
+- (void)pullToRefresh:(UIRefreshControl *)control
+{
+    [self showStatus:@"001 正在搜索附近设备…"];
+    [[KSServer shared] refreshBonjour];
+    [[KSServer shared] autoConnectKnownPeers];
+    [self.table reloadData];
+    [control endRefreshing];
 }
 
 - (void)manualConnect
@@ -522,6 +536,32 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls
     cell.detailTextLabel.text = KSFormatBytes(KSFileSize(path));
     cell.imageView.image = [UIImage systemImageNamed:@"doc"];
     return cell;
+}
+
+- (UISwipeActionsConfiguration *)tableView:(UITableView *)tv
+    trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)ip
+{
+    if (ip.row >= (NSInteger)self.files.count) return nil;
+    NSString *name = self.files[ip.row];
+    NSString *path = [[self currentDir] stringByAppendingPathComponent:name];
+    __weak typeof(self) weakSelf = self;
+    UIContextualAction *del = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive
+                                                                      title:@"删除"
+                                                                    handler:^(UIContextualAction *a, UIView *v, void (^done)(BOOL)) {
+        [[NSFileManager defaultManager] removeItemAtPath:path error:NULL];
+        [weakSelf reload];
+        done(YES);
+    }];
+    UIContextualAction *share = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleNormal
+                                                                       title:@"分享"
+                                                                     handler:^(UIContextualAction *a, UIView *v, void (^done)(BOOL)) {
+        UIActivityViewController *av = [[UIActivityViewController alloc]
+            initWithActivityItems:@[[NSURL fileURLWithPath:path]] applicationActivities:nil];
+        [weakSelf presentViewController:av animated:YES completion:nil];
+        done(YES);
+    }];
+    share.backgroundColor = KSSystemAccent();
+    return [UISwipeActionsConfiguration configurationWithActions:@[del, share]];
 }
 
 - (void)tableView:(UITableView *)tv didSelectRowAtIndexPath:(NSIndexPath *)ip
