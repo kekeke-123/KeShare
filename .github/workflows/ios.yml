@@ -40,7 +40,8 @@ jobs:
         run: |
           cd ios
           set -o pipefail
-          make app VERSION=0.0.1 BUILD="${{ github.run_number }}" 2>&1 | tee /tmp/build.log
+          make app VERSION=0.0.1 BUILD="${{ github.run_number }}" LITE=0 2>&1 | tee /tmp/build.log
+          cp build/KeShare.app/Info.plist /tmp/stable-Info.plist
 
       - name: 校验产物架构与最低系统
         run: |
@@ -64,7 +65,16 @@ jobs:
         run: |
           cd ios
           make ipa
-          # 已无扩展，不再产出 noext
+          cp build/KeShare.ipa build/KeShare-stable.ipa
+          # 第二个编译产物：Lite（更激进的传输参数）
+          cd ..
+          cd ios
+          make clean >/dev/null 2>&1 || true
+          make app VERSION=0.0.1 BUILD="${{ github.run_number }}" LITE=1 2>&1 | tee /tmp/build-lite.log
+          LDID_BIN=$(command -v ldid || echo /tmp/ldid)
+          make sign LDID="$LDID_BIN"
+          make ipa
+          cp build/KeShare.ipa build/KeShare-lite.ipa
           ls -la build/*.ipa
 
       - name: 上传 artifacts
@@ -72,8 +82,8 @@ jobs:
         with:
           name: KeShare-ios-arm64-${{ github.run_number }}
           path: |
-            ios/build/KeShare.ipa
-            ios/build/KeShare-noext.ipa
+            ios/build/KeShare-stable.ipa
+            ios/build/KeShare-lite.ipa
             ios/build/KeShare.app/**
           retention-days: 30
           if-no-files-found: warn
@@ -91,7 +101,7 @@ jobs:
           git config user.email "ci@keshare.local"
           cp ../KeShare.ipa .
 
-          git add KeShare.ipa
+          git add KeShare-stable.ipa KeShare-lite.ipa
           git commit -qm "IPA build ${GITHUB_RUN_NUMBER} (${GITHUB_SHA:0:7})"
           git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" HEAD:artifacts
       # 失败时把编译日志写进 Issue（公开可读，方便排查）

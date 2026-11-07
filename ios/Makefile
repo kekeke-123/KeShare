@@ -28,7 +28,8 @@ SRC_SWIFT  :=
 OBJ        := $(patsubst %.c,$(OUT)/%.o,$(notdir $(SRC_C))) \
               $(patsubst %.m,$(OUT)/%.o,$(SRC_M))
 
-CFLAGS     := -target $(TARGET) -isysroot $(SDK) -O2 -fobjc-arc -fmodules \
+LITE ?= 0
+CFLAGS     := $(if $(filter 1,$(LITE)),-DKS_LITE=1,-DKS_LITE=0)  -target $(TARGET) -isysroot $(SDK) -O2 -fobjc-arc -fmodules \
               -Wall -Wno-unused-parameter -Wno-deprecated-declarations \
               -I. -I../protocol
 SWIFTFLAGS := -target $(TARGET) -sdk $(SDK) -O -whole-module-optimization \
