@@ -71,6 +71,75 @@
 - (void)handleServerHello:(NSDictionary *)message link:(KSTcpServerLink *)link;
 @end
 
+#pragma mark - 服务端控制链路（accepted socket 上的一条 CTL 会话）
+
+/// 关键：对端连进来的控制通道，所有回包必须写回这条 socket。
+/// 旧实现把回包写到全局 BLE 链路，WiFi 回退时握手永远完不成。
+@interface KSTcpServerLink : NSObject <KSServerControlLink>
+@property (nonatomic, weak) id<KSControlLinkDelegate> delegate;
+@property (nonatomic, assign) int fd;
+@property (nonatomic, copy) NSString *nonce;
+@property (nonatomic, copy, nullable) NSString *peerDid;
+@property (nonatomic, copy, nullable) NSString *remoteIp;
+- (instancetype)initWithFd:(int)fd remoteIp:(nullable NSString *)ip;
+@end
+
+@implementation KSTcpServerLink
+{
+    NSLock *_sendLock;
+    BOOL _open;
+}
+
+- (instancetype)initWithFd:(int)fd remoteIp:(NSString *)ip
+{
+    if ((self = [super init])) {
+        _fd = fd;
+        _remoteIp = [ip copy] ?: @"";
+        _nonce = @"";
+        _sendLock = [[NSLock alloc] init];
+        _open = YES;
+    }
+    return self;
+}
+
+- (NSString *)transportName { return @"WiFi 回退"; }
+- (BOOL)isOpen { return _open; }
+
+- (void)sendMessage:(NSDictionary *)message
+{
+    NSData *json = [NSJSONSerialization dataWithJSONObject:message options:0 error:NULL];
+    if (!json) return;
+    uint32_t len = (uint32_t)json.length;
+    NSMutableData *frame = [NSMutableData dataWithCapacity:json.length + 4];
+    uint8_t hdr[4] = { (uint8_t)(len >> 24), (uint8_t)(len >> 16), (uint8_t)(len >> 8), (uint8_t)len };
+    [frame appendBytes:hdr length:4];
+    [frame appendData:json];
+
+    [_sendLock lock];
+    if (_open && _fd >= 0) {
+        KSWriteFull(_fd, frame.bytes, frame.length);
+    }
+    [_sendLock unlock];
+
+    if (KSConfig.shared.verboseLogging) {
+        [[KSLog shared] log:@"CTL→(srv) %@", message[@"t"]];
+    }
+}
+
+- (void)close
+{
+    [_sendLock lock];
+    _open = NO;
+    if (_fd >= 0) {
+        shutdown(_fd, SHUT_RDWR);
+        close(_fd);
+        _fd = -1;
+    }
+    [_sendLock unlock];
+}
+
+@end
+
 @implementation KSServer
 
 + (KSServer *)shared
@@ -361,75 +430,6 @@
         }
     }
 }
-
-#pragma mark - 服务端控制链路（accepted socket 上的一条 CTL 会话）
-
-/// 关键：对端连进来的控制通道，所有回包必须写回这条 socket。
-/// 旧实现把回包写到全局 BLE 链路，WiFi 回退时握手永远完不成。
-@interface KSTcpServerLink : NSObject <KSServerControlLink>
-@property (nonatomic, weak) id<KSControlLinkDelegate> delegate;
-@property (nonatomic, assign) int fd;
-@property (nonatomic, copy) NSString *nonce;
-@property (nonatomic, copy, nullable) NSString *peerDid;
-@property (nonatomic, copy, nullable) NSString *remoteIp;
-- (instancetype)initWithFd:(int)fd remoteIp:(nullable NSString *)ip;
-@end
-
-@implementation KSTcpServerLink
-{
-    NSLock *_sendLock;
-    BOOL _open;
-}
-
-- (instancetype)initWithFd:(int)fd remoteIp:(NSString *)ip
-{
-    if ((self = [super init])) {
-        _fd = fd;
-        _remoteIp = [ip copy] ?: @"";
-        _nonce = @"";
-        _sendLock = [[NSLock alloc] init];
-        _open = YES;
-    }
-    return self;
-}
-
-- (NSString *)transportName { return @"WiFi 回退"; }
-- (BOOL)isOpen { return _open; }
-
-- (void)sendMessage:(NSDictionary *)message
-{
-    NSData *json = [NSJSONSerialization dataWithJSONObject:message options:0 error:NULL];
-    if (!json) return;
-    uint32_t len = (uint32_t)json.length;
-    NSMutableData *frame = [NSMutableData dataWithCapacity:json.length + 4];
-    uint8_t hdr[4] = { (uint8_t)(len >> 24), (uint8_t)(len >> 16), (uint8_t)(len >> 8), (uint8_t)len };
-    [frame appendBytes:hdr length:4];
-    [frame appendData:json];
-
-    [_sendLock lock];
-    if (_open && _fd >= 0) {
-        KSWriteFull(_fd, frame.bytes, frame.length);
-    }
-    [_sendLock unlock];
-
-    if (KSConfig.shared.verboseLogging) {
-        [[KSLog shared] log:@"CTL→(srv) %@", message[@"t"]];
-    }
-}
-
-- (void)close
-{
-    [_sendLock lock];
-    _open = NO;
-    if (_fd >= 0) {
-        shutdown(_fd, SHUT_RDWR);
-        close(_fd);
-        _fd = -1;
-    }
-    [_sendLock unlock];
-}
-
-@end
 
 #pragma mark WiFi 回退控制通道（服务端）
 
