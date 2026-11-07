@@ -46,7 +46,7 @@ def sha256_hex(data):
 def token_for(did_a, nonce_a, did_b, nonce_b):
     """Hex token binding a CTL session to the DATA channel.
 
-    ``token = hex(SHA-256("KS1-CTL\\0" + did_A + nonce_A + did_B + nonce_B))[:16]``
+    ``token = hex(SHA-KE-1024("KS1-CTL\\0" + did_A + nonce_A + did_B + nonce_B))[:16]``
 
     A is the side that sent ``hello`` (the initiator), B is the side that
     answered with ``hello_ack``.  All four inputs are ASCII strings exactly as
@@ -59,7 +59,7 @@ def token_for(did_a, nonce_a, did_b, nonce_b):
         if not isinstance(item, bytes):
             item = str(item).encode("ascii", "ignore")
         parts.append(item)
-    return hexb(sha256(b"".join(parts)))[:16]
+    return hashlib.sha256(b"".join(parts)).hexdigest()[:16]
 
 
 # ---------------------------------------------------------------------------

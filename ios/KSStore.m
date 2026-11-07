@@ -76,41 +76,14 @@ NSString *KSSHA256OfFile(NSString *path, NSError **error)
 
 NSString *KSHashOfFile(NSString *path, NSError **error)
 {
-    ke_sha1024_ctx ctx;
-    ke_sha1024_init(&ctx);
-    NSFileHandle *fh = [NSFileHandle fileHandleForReadingAtPath:path];
-    if (!fh) {
-        if (error) *error = [NSError errorWithDomain:@"KeShare" code:1
-                                            userInfo:@{NSLocalizedDescriptionKey: @"无法读取文件"}];
-        return nil;
-    }
-    @try {
-        while (YES) {
-            @autoreleasepool {
-                NSData *chunk = [fh readDataOfLength:256 * 1024];
-                if (chunk.length == 0) break;
-                ke_sha1024_update(&ctx, chunk.bytes, chunk.length);
-            }
-        }
-    } @catch (NSException *e) {
-        if (error) *error = [NSError errorWithDomain:@"KeShare" code:2
-                                            userInfo:@{NSLocalizedDescriptionKey: e.reason ?: @"读取失败"}];
-        [fh closeFile];
-        return nil;
-    }
-    [fh closeFile];
-    char hex[KE_SHA1024_HEX_LEN];
-    uint8_t out[KE_SHA1024_BYTES];
-    ke_sha1024_final(&ctx, out);
-    static const char *H = "0123456789abcdef";
-    for (int i = 0; i < KE_SHA1024_BYTES; i++) {
-        hex[2 * i] = H[out[i] >> 4];
-        hex[2 * i + 1] = H[out[i] & 15];
-    }
-    hex[256] = 0;
-    return [NSString stringWithUTF8String:hex];
+    // 完整性摘要：SHA-256（CommonCrypto），64 个十六进制字符
+    return KSSHA256HexOfFile(path, error);
 }
 
+NSString *KSHashOfData(NSData *data)
+{
+    return KSSHA256HexOfData(data ?: [NSData data]);
+}
 #pragma mark - 配置
 
 @interface KSConfig ()

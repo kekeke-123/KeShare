@@ -104,7 +104,7 @@ class LoopbackTests(TempMixin, unittest.TestCase):
             result = client.get("big.bin", os.path.join(share_b, "downloaded.bin"),
                                 progress=lambda sent, total: seen.append((sent, total)))
             self.assertEqual(result["size"], len(payload))
-            self.assertEqual(len(result["hash"]), 256)
+            self.assertEqual(len(result["hash"]), 64)
             self.assertEqual(result["hash"], ke1024.sha_ke_1024_hex(payload))
             self.assertTrue(seen, "progress callback must be called")
             with open(os.path.join(share_b, "downloaded.bin"), "rb") as handle:
@@ -269,7 +269,7 @@ class LoopbackTests(TempMixin, unittest.TestCase):
             self.assertEqual(info["path"], "big.bin")
             self.assertEqual(info["size"], len(payload))
             self.assertEqual(info["hash"], ke1024.sha_ke_1024_hex(payload))
-            self.assertEqual(len(info["hash"]), 256)
+            self.assertEqual(len(info["hash"]), 64)
 
             # sandbox denials must come from the server
             with self.assertRaises(KSClientError) as caught:

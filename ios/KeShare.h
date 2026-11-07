@@ -5,10 +5,8 @@
 
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
-#import "ks_ke1024.h"
-
-#define KS_HASH_BYTES   KE_SHA1024_BYTES
-#define KS_HASH_HEX_LEN 257
+#define KS_HASH_BYTES   32
+#define KS_HASH_HEX_LEN 65
 
 NS_ASSUME_NONNULL_BEGIN
 

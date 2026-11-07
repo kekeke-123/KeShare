@@ -142,6 +142,12 @@ class Config(object):
     def __init__(self, data=None, path=None):
         self.path = path or settings_path()
         self.data = deep_merge(DEFAULTS, data or {})
+        # 无论从哪条路径构造，都保证身份标识存在：
+        # 空 did 会让两端 token 计算不一致，握手必然失败。
+        if not str(self.data.get("device", {}).get("id") or "").strip():
+            self.data.setdefault("device", {})["id"] = secrets.token_hex(8).upper()
+        if not str(self.data.get("device", {}).get("secret") or "").strip():
+            self.data.setdefault("device", {})["secret"] = secrets.token_hex(32)
 
     # -- construction ------------------------------------------------------
     @classmethod

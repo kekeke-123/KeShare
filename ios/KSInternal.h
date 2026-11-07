@@ -41,6 +41,9 @@ UIColor *KSSystemAccent(void);
 - (nullable id<KSDiscoveryLink>)bleLink;
 - (void)autoConnectKnownPeers;
 @end
+/// SHA-256（CommonCrypto）：完整性摘要与 token 都用它
+NSString *KSSHA256HexOfData(NSData *data);
+NSString *KSSHA256HexOfFile(NSString *path, NSError **error);
 #pragma mark - UDP 发现（KSDisc.m）
 
 void KSDiscoveryStart(void);

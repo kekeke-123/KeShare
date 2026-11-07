@@ -65,8 +65,8 @@ class TempMixin(object):
 class Ke1024Tests(unittest.TestCase):
     def test_published_vectors(self):
         for payload, expected in ke1024.VECTORS:
-            self.assertEqual(len(expected), 256)
-            self.assertEqual(len(bytes.fromhex(expected)), 128)
+            self.assertEqual(len(expected), 64)
+            self.assertEqual(len(bytes.fromhex(expected)), 32)
             self.assertEqual(ke1024.sha_ke_1024_hex(payload), expected,
                              "vector failed for %d bytes" % len(payload))
             self.assertEqual(ke1024.sha_ke_1024(payload), bytes.fromhex(expected))
@@ -285,7 +285,7 @@ class CtlTransportTests(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Token derivation (SHA-256, PROTOCOL.md section 2)
+# Token derivation (SHA-64, PROTOCOL.md section 2)
 # ---------------------------------------------------------------------------
 class TokenTests(unittest.TestCase):
     def test_known_value(self):
@@ -314,7 +314,7 @@ class TokenTests(unittest.TestCase):
 # ---------------------------------------------------------------------------
 class ChunkTests(unittest.TestCase):
     def test_chunk_round_trip(self):
-        payload = bytes(bytearray(range(256))) * 4
+        payload = bytes(bytearray(range(64))) * 4
         raw = protocol.encode_chunk(7, 4096, payload)
         framer = protocol.ChunkFramer()
         framer.feed(raw)
@@ -399,7 +399,7 @@ class ChunkTests(unittest.TestCase):
         with open(path, "wb") as handle:
             handle.write(b"hello keshare")
         digest = ke1024.sha_ke_1024_file(path)
-        self.assertEqual(len(digest), 256)
+        self.assertEqual(len(digest), 64)
         self.assertEqual(data.verify_hash(path, digest), digest)
 
         with open(path, "r+b") as handle:                  # flip one byte

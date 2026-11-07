@@ -232,9 +232,8 @@
         [d appendData:[myDid dataUsingEncoding:NSUTF8StringEncoding]];
         [d appendData:[self.myNonce dataUsingEncoding:NSUTF8StringEncoding]];
     }
-    char hex[KE_SHA1024_HEX_LEN];
-    ke_sha1024_hex(d.bytes, d.length, hex);
-    return [[NSString stringWithUTF8String:hex] substringToIndex:16];
+    NSString *hex = KSSHA256HexOfData(d);
+    return [hex substringToIndex:16];
 }
 
 #pragma mark KSControlLinkDelegate

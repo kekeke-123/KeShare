@@ -3,6 +3,7 @@
 //
 
 #import "KSInternal.h"
+#import <CommonCrypto/CommonDigest.h>
 #import <arpa/inet.h>
 #import <netinet/in.h>
 #import <netinet/tcp.h>
@@ -61,3 +62,47 @@ NSString *KSIPv4StringLocal(void)
 
 UIColor *KSThemeTextSecondary(void) { return [UIColor colorWithWhite:1.0 alpha:0.62]; }
 UIColor *KSSystemAccent(void) { return [UIColor colorWithRed:0.36 green:0.72 blue:1.0 alpha:1.0]; }
+
+NSString *KSSHA256HexOfData(NSData *data)
+{
+    unsigned char digest[CC_SHA256_DIGEST_LENGTH];
+    CC_SHA256(data.bytes, (CC_LONG)data.length, digest);
+    char hex[CC_SHA256_DIGEST_LENGTH * 2 + 1];
+    for (int i = 0; i < CC_SHA256_DIGEST_LENGTH; i++) {
+        static const char *H = "0123456789abcdef";
+        hex[2 * i] = H[digest[i] >> 4];
+        hex[2 * i + 1] = H[digest[i] & 15];
+    }
+    hex[CC_SHA256_DIGEST_LENGTH * 2] = 0;
+    return [NSString stringWithUTF8String:hex];
+}
+
+NSString *KSSHA256HexOfFile(NSString *path, NSError **error)
+{
+    CC_SHA256_CTX ctx;
+    CC_SHA256_Init(&ctx);
+    NSFileHandle *fh = [NSFileHandle fileHandleForReadingAtPath:path];
+    if (!fh) {
+        if (error) *error = [NSError errorWithDomain:@"KeShare" code:1
+                                            userInfo:@{NSLocalizedDescriptionKey: @"无法读取文件"}];
+        return nil;
+    }
+    while (YES) {
+        @autoreleasepool {
+            NSData *chunk = [fh readDataOfLength:256 * 1024];
+            if (chunk.length == 0) break;
+            CC_SHA256_Update(&ctx, chunk.bytes, (CC_LONG)chunk.length);
+        }
+    }
+    [fh closeFile];
+    unsigned char digest[CC_SHA256_DIGEST_LENGTH];
+    CC_SHA256_Final(digest, &ctx);
+    char hex[CC_SHA256_DIGEST_LENGTH * 2 + 1];
+    static const char *H = "0123456789abcdef";
+    for (int i = 0; i < CC_SHA256_DIGEST_LENGTH; i++) {
+        hex[2 * i] = H[digest[i] >> 4];
+        hex[2 * i + 1] = H[digest[i] & 15];
+    }
+    hex[CC_SHA256_DIGEST_LENGTH * 2] = 0;
+    return [NSString stringWithUTF8String:hex];
+}

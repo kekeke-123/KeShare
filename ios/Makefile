@@ -21,7 +21,7 @@ SWIFTC     := xcrun --sdk iphoneos swiftc
 OUT        := build
 APP_DIR    := $(OUT)/$(APP).app
 
-SRC_C      := ../protocol/ks_ke1024.c
+SRC_C      :=
 SRC_M      := main.m KSApp.m KSStore.m KSInternal.m KSDisc.m KSNet.m KSNetData.m KSNetServe.m KSSession.m KSUI.m KSActivityShim.m
 SRC_SWIFT  :=
 

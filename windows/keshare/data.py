@@ -22,7 +22,7 @@ import socket
 import threading
 import time
 
-from . import ke1024, protocol
+from . import hashlib_sha as filehash, protocol
 
 CHUNK_DEFAULT = protocol.CHUNK_DEFAULT
 
@@ -98,7 +98,7 @@ def send_file(sock, fileobj, size, chunk=CHUNK_DEFAULT, progress=None, rate=None
     sent = 0
     frames = 0
     started = time.time()
-    hasher = ke1024.Ke1024()
+    hasher = filehash.Sha256()
     while True:
         data = fileobj.read(chunk)
         if not data:
@@ -139,7 +139,7 @@ def recv_file(sock, fileobj, expected_size=0, progress=None, timeout=300.0,
     received = 0
     frames = 0
     seq_expected = 0
-    hasher = ke1024.Ke1024()
+    hasher = filehash.Sha256()
     deadline = time.time() + float(timeout or 300.0)
     while True:
         remaining = deadline - time.time()
@@ -202,7 +202,7 @@ def verify_hash(path, claimed_digest, delete_on_fail=True):
     as PROTOCOL.md section 4.2 requires.  An empty *claimed_digest* is treated
     as "not provided" and only the actual digest is returned.
     """
-    actual = ke1024.sha_ke_1024_file(path)
+    actual = filehash.sha256_file(path)
     claimed = str(claimed_digest or "").strip().lower()
     if claimed and claimed != actual:
         if delete_on_fail:
