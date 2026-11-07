@@ -168,6 +168,10 @@
         if (![obj isKindOfClass:[NSDictionary class]]) continue;
         NSDictionary *msg = obj;
 
+        // 兼容两套标记：ks 是统一字段，wb 是旧版 Windows 字段
+        NSInteger magic = [msg[@"ks"] integerValue] ?: [msg[@"wb"] integerValue];
+        if (magic != 1) continue;
+
         NSString *myDid = KSConfig.shared.deviceId ?: @"";
         NSString *did = msg[@"did"] ?: @"";
         if (did.length && [did isEqualToString:myDid]) continue;   // 自己发的

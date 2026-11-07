@@ -263,14 +263,14 @@ class UdpProbe(object):
     # -- payloads ----------------------------------------------------------
     def probe_payload(self):
         return {
-            "wb": 1, "t": "probe", "did": self.config.device_id,
+            "ks": 1, "t": "probe", "did": self.config.device_id,
             "name": self.config.device_name, "port": int(self.config.port),
             "caps": 0x7F,
         }
 
     def announce_payload(self, nonce=""):
         return {
-            "wb": 1, "t": "announce", "did": self.config.device_id,
+            "ks": 1, "t": "announce", "did": self.config.device_id,
             "name": self.config.device_name, "kind": "windows",
             "osv": "windows", "port": int(self.config.port), "caps": 0x7F,
             "nonce": nonce or "%08x" % (int(time.time() * 1000) & 0xFFFFFFFF),
@@ -340,7 +340,10 @@ class UdpProbe(object):
             payload = json.loads(data.decode("utf-8", "replace"))
         except ValueError:
             return
-        if not isinstance(payload, dict) or payload.get("wb") != 1:
+        if not isinstance(payload, dict):
+            return
+        # 兼容两套标记：ks 是统一后的字段，wb 是旧版 Windows 字段
+        if payload.get("ks") != 1 and payload.get("wb") != 1:
             return
         did = str(payload.get("did") or "")
         if not did or did == self.config.device_id:
