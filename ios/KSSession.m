@@ -184,7 +184,7 @@
         self.link = link;
         link.delegate = self;
         if ([link respondsToSelector:NSSelectorFromString(@"startScanning")]) {
-            [(id)link performSelector:NSSelectorFromString(@"startScanning")];
+            [(id<KSDirectLink>)link startScanning];
         }
         [[KSLog shared] info:@"会话使用蓝牙控制通道"];
     }

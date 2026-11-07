@@ -113,6 +113,7 @@ typedef NS_ENUM(NSInteger, KSTransferState) {
 @property (nonatomic, assign) BOOL verboseLogging;
 @property (nonatomic, assign) NSInteger logRingSize;
 
+@property (nonatomic, readonly) NSString *receivePath;      // 分享根目录下的接收子目录（绝对路径）
 @property (nonatomic, readonly) NSURL *configFileURL;
 @property (nonatomic, readonly) NSString *configFilePath;
 @property (nonatomic, readonly) uint32_t caps;

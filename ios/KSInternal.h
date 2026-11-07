@@ -23,6 +23,12 @@ NS_ASSUME_NONNULL_BEGIN
 UIColor *KSThemeTextSecondary(void);
 UIColor *KSSystemAccent(void);
 
+/// BLE 链路额外的控制方法（KSBleLink 实现，避免用 performSelector 触发 ARC 警告）
+@protocol KSDirectLink <KSControlLink>
+- (void)startAdvertising;
+- (void)startScanning;
+- (void)stopScanning;
+@end
 #pragma mark - 网络小工具（KSInternal.m 里实现）
 
 BOOL KSReadFull(int fd, void *buf, size_t len);

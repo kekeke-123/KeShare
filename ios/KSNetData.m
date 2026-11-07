@@ -172,7 +172,7 @@
         link.delegate = self;
         self.controlLink = link;
         if ([link respondsToSelector:NSSelectorFromString(@"startAdvertising")]) {
-            [(id)link performSelector:NSSelectorFromString(@"startAdvertising")];
+            [(id<KSDirectLink>)link startAdvertising];
         }
     }
 }
