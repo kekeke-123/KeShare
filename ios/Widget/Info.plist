@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>          <string>zh_CN</string>
+    <key>CFBundleDisplayName</key>                <string>KeShare</string>
+    <key>CFBundleExecutable</key>                 <string>KeShareWidget</string>
+    <key>CFBundleIdentifier</key>                 <string>com.keshare.app.widget</string>
+    <key>CFBundlePackageType</key>                <string>XPC!</string>
+    <key>CFBundleShortVersionString</key>         <string>1.0.0</string>
+    <key>CFBundleVersion</key>                    <string>1</string>
+    <key>MinimumOSVersion</key>                   <string>16.1</string>
+    <key>NSExtension</key>
+    <dict>
+        <key>NSExtensionPointIdentifier</key>     <string>com.apple.widgetkit-extension</string>
+    </dict>
+    <key>NSSupportsLiveActivities</key>           <true/>
+</dict>
+</plist>

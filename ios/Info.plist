@@ -1,0 +1,53 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>          <string>zh_CN</string>
+    <key>CFBundleDisplayName</key>                <string>KeShare</string>
+    <key>CFBundleExecutable</key>                 <string>KeShare</string>
+    <key>CFBundleIdentifier</key>                 <string>com.keshare.app</string>
+    <key>CFBundleInfoDictionaryVersion</key>      <string>6.0</string>
+    <key>CFBundleName</key>                       <string>KeShare</string>
+    <key>CFBundlePackageType</key>                <string>APPL</string>
+    <key>CFBundleShortVersionString</key>         <string>1.0.0</string>
+    <key>CFBundleVersion</key>                    <string>1</string>
+    <key>LSRequiresIPhoneOS</key>                 <true/>
+    <key>MinimumOSVersion</key>                   <string>16.1</string>
+    <key>UIRequiredDeviceCapabilities</key>       <array><string>arm64</string></array>
+    <key>UIDeviceFamily</key>                     <array><integer>1</integer><integer>2</integer></array>
+    <key>UILaunchScreen</key>                     <dict/>
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
+    </array>
+    <key>UIUserInterfaceStyle</key>               <string>Dark</string>
+    <key>UIViewControllerBasedStatusBarAppearance</key> <true/>
+
+    <!-- 蓝牙：控制通道 -->
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>KeShare 使用蓝牙与附近设备握手并发送传输请求。</string>
+    <key>NSBluetoothPeripheralUsageDescription</key>
+    <string>KeShare 使用蓝牙与其他设备建立控制通道。</string>
+
+    <!-- 本地网络：WiFi 数据通道 + Bonjour -->
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>KeShare 需要访问本地网络以在设备之间传输文件。</string>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_keshare._tcp</string>
+        <string>_keshare._tcp.</string>
+    </array>
+
+    <!-- 文件导入导出 -->
+    <key>UIFileSharingEnabled</key>               <true/>
+    <key>LSSupportsOpeningDocumentsInPlace</key>  <true/>
+    <key>UISupportsDocumentBrowser</key>          <false/>
+
+    <!-- 灵动岛 / 实时活动 -->
+    <key>NSSupportsLiveActivities</key>           <true/>
+    <key>NSSupportsLiveActivitiesFrequentUpdates</key> <true/>
+</dict>
+</plist>
+

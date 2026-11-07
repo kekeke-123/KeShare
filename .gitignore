@@ -1,0 +1,35 @@
+# 构建产物
+build/
+*.o
+*.app/
+*.appex/
+*.ipa
+*.exe
+*.dll
+*.pdb
+Dist/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 工具链 / 本地临时目录
+toolchain/
+.scratch/
+*.log
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# 测试产物
+windows/*.json
+kshare-*.txt
+keshare-*.json
+*.part
