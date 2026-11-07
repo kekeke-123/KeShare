@@ -167,14 +167,28 @@
 - (void)startControlChannel
 {
     Class bleClass = NSClassFromString(@"KSBleLink");
-    if (bleClass) {
-        id<KSControlLink> link = [[bleClass alloc] init];
-        link.delegate = self;
-        self.controlLink = link;
-        if ([link respondsToSelector:NSSelectorFromString(@"startAdvertising")]) {
-            [(id<KSDirectLink>)link startAdvertising];
-        }
-    }
+    if (!bleClass) return;
+    id<KSDiscoveryLink> ble = [[bleClass alloc] init];
+    ble.delegate = self;
+    __weak typeof(self) weakSelf = self;
+    ble.onPeerFound = ^(KSDevice *peer, id peripheral) {
+        peer.link = peripheral;
+        peer.host = KSIPv4StringLocal();
+        peer.port = (uint16_t)(KSConfig.shared.port > 0 ? KSConfig.shared.port : KS_DATA_PORT);
+        peer.kind = KSDeviceKindUnknown;
+        [weakSelf addPeer:peer];
+    };
+    self.controlLink = ble;
+    [ble startAdvertising];
+    [ble startScanning];
+    [[KSLog shared] info:@"蓝牙广播 + 扫描已启动"];
+}
+
+- (id<KSDiscoveryLink>)bleLink
+{
+    id l = self.controlLink;
+    if ([l conformsToProtocol:@protocol(KSDiscoveryLink)]) return (id<KSDiscoveryLink>)l;
+    return nil;
 }
 
 - (KSSession *)sessionForPeerId:(NSString *)deviceId
@@ -234,6 +248,12 @@
         if (!pt) {
             [[KSLog shared] warn:@"未知的传输 id %@", tid];
             close(cfd);
+            return;
+        }
+
+        // 本机是发送方（对端来拉文件）→ 写数据帧
+        if (pt.servePath) {
+            [self serveTransfer:pt onSocket:cfd];
             return;
         }
 
@@ -392,8 +412,14 @@
             @"host": KSIPv4StringLocal()
         };
         [link sendMessage:ack];
+    } else if ([t isEqualToString:@"get"]) {
+        [self handleGetRequest:message link:link];
+    } else if ([t isEqualToString:@"put_offer"]) {
+        [self handlePutOffer:message link:link];
     } else if ([t isEqualToString:@"hash"]) {
         [self handleHashMessage:message link:link];
+    } else if ([t isEqualToString:@"hash_resp"]) {
+        [self handleHashAck:message];
     } else if ([t isEqualToString:@"bye"]) {
         [link close];
     }

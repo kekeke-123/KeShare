@@ -154,6 +154,8 @@
 @property (nonatomic, copy) NSString *peerNonce;
 @property (nonatomic, assign) BOOL initiator;
 @property (nonatomic, strong) NSMutableArray<KSTransfer *> *transfers;
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *localTemp;
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *localDest;
 @end
 
 @implementation KSSession
@@ -163,6 +165,8 @@
     if ((self = [super init])) {
         _peer = peer;
         _transfers = [NSMutableArray array];
+        _localTemp = [NSMutableDictionary dictionary];
+        _localDest = [NSMutableDictionary dictionary];
         _lastListing = @[];
         _myNonce = KSRandomHex(16);
     }
@@ -173,20 +177,16 @@
 {
     self.initiator = initiator;
 
-    // 优先蓝牙；不可用则 WiFi 回退
-    Class ble = NSClassFromString(@"KSBleLink");
-    BOOL useBLE = NO;
-    if (ble && [KSConfig.shared.discoveryMode isEqualToString:@"wifi"] == NO) {
-        useBLE = YES;
-    }
-    if (useBLE) {
-        id<KSControlLink> link = [[ble alloc] init];
-        self.link = link;
-        link.delegate = self;
-        if ([link respondsToSelector:NSSelectorFromString(@"startScanning")]) {
-            [(id<KSDirectLink>)link startScanning];
-        }
-        [[KSLog shared] info:@"会话使用蓝牙控制通道"];
+    // 优先用「已扫描到的蓝牙外设」直连；否则退回 WiFi 控制通道
+    id<KSDiscoveryLink> ble = [KSServer shared].bleLink;
+    Class peripheralClass = NSClassFromString(@"CBPeripheral");
+    BOOL canUseBLE = ble && self.peer.link && peripheralClass &&
+                     [self.peer.link isKindOfClass:peripheralClass];
+    if (canUseBLE) {
+        self.link = ble;
+        self.link.delegate = self;
+        [ble connectPeripheral:self.peer.link];
+        [[KSLog shared] info:@"会话使用蓝牙控制通道（%@）", self.peer.name];
     }
     if (!self.link) {
         self.link = [[KSWifiControlLink alloc] initWithHost:self.peer.host
@@ -464,6 +464,7 @@
     [[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES
                                                    attributes:nil error:NULL];
     NSString *dest = [dir stringByAppendingPathComponent:name];
+    self.localDest[tid] = dest;
 
     __weak typeof(self) weakSelf = self;
     [KSDataReceiver receiveFromHost:self.peer.host
@@ -487,6 +488,7 @@
             [[KSLog shared] error:@"下载 %@ 失败: %@", tid, error];
         } else {
             t2.state = KSTransferStateVerifying;
+            weakSelf.localTemp[tid] = tempPath;
             [[KSLog shared] info:@"下载 %@ 数据完成 %@，等待哈希", tid, tempPath.lastPathComponent];
         }
         [[NSNotificationCenter defaultCenter] postNotificationName:KSTransfersDidChangeNotification object:t2];
@@ -498,7 +500,7 @@
     NSString *tid = msg[@"id"];
     NSString *expect = msg[@"sha_ke_1024"] ?: msg[@"hash"];
     KSTransfer *tr = [self transferWithId:tid];
-    NSString *path = tr.path;
+    NSString *path = self.localTemp[tid] ?: tr.path;
 
     if (path.length == 0 || ![[NSFileManager defaultManager] fileExistsAtPath:path]) {
         [self.link sendMessage:@{ @"t": @"hash_resp", @"id": tid ?: @"", @"ok": @NO, @"err": @"notfound" }];
@@ -514,11 +516,19 @@
             [expect substringToIndex:MIN(16u, expect.length)],
             [actual substringToIndex:MIN(16u, actual.length)]];
     } else {
+        NSString *dest = self.localDest[tid];
+        if (dest) {
+            [[NSFileManager defaultManager] removeItemAtPath:dest error:NULL];
+            [[NSFileManager defaultManager] moveItemAtPath:path toPath:dest error:NULL];
+            path = dest;
+        }
         tr.state = KSTransferStateDone;
         tr.done = tr.total;
         tr.path = path;
         [[KSLog shared] info:@"%@ 校验通过：%@", tid, path.lastPathComponent];
     }
+    [self.localTemp removeObjectForKey:tid ?: @""];
+    [self.localDest removeObjectForKey:tid ?: @""];
     [self.link sendMessage:@{ @"t": @"hash_resp", @"id": tid ?: @"", @"ok": @(ok) }];
     KSActivityFinish(ok, ok ? @"校验通过，传输完成" : @"校验失败，文件已删除");
     [[NSNotificationCenter defaultCenter] postNotificationName:KSTransfersDidChangeNotification object:tr];

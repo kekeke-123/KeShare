@@ -91,7 +91,7 @@
 - (void)stopAdvertising;
 - (void)startScanning;
 - (void)stopScanning;
-- (BOOL)connectPeripheral:(CBPeripheral *)peripheral;
+- (BOOL)connectPeripheral:(id)peripheral;
 @end
 
 @implementation KSBleLink
@@ -212,8 +212,9 @@
     }
 }
 
-- (BOOL)connectPeripheral:(CBPeripheral *)peripheral
+- (BOOL)connectPeripheral:(id)peripheralArg
 {
+    CBPeripheral *peripheral = (CBPeripheral *)peripheralArg;
     if (!_cm || peripheral.state == CBPeripheralStateDisconnected) {
         _peripheral = peripheral;
         peripheral.delegate = self;

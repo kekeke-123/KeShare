@@ -9,10 +9,10 @@
     <key>CFBundleInfoDictionaryVersion</key>      <string>6.0</string>
     <key>CFBundleName</key>                       <string>KeShare</string>
     <key>CFBundlePackageType</key>                <string>APPL</string>
-    <key>CFBundleShortVersionString</key>         <string>1.0.0</string>
+    <key>CFBundleShortVersionString</key>         <string>1.0.1</string>
     <key>CFBundleVersion</key>                    <string>1</string>
     <key>LSRequiresIPhoneOS</key>                 <true/>
-    <key>MinimumOSVersion</key>                   <string>16.1</string>
+    <key>MinimumOSVersion</key>                   <string>15.0</string>
     <key>UIRequiredDeviceCapabilities</key>       <array><string>arm64</string></array>
     <key>UIDeviceFamily</key>                     <array><integer>1</integer><integer>2</integer></array>
     <key>UILaunchScreen</key>                     <dict/>
@@ -45,9 +45,6 @@
     <key>LSSupportsOpeningDocumentsInPlace</key>  <true/>
     <key>UISupportsDocumentBrowser</key>          <false/>
 
-    <!-- 灵动岛 / 实时活动 -->
-    <key>NSSupportsLiveActivities</key>           <true/>
-    <key>NSSupportsLiveActivitiesFrequentUpdates</key> <true/>
 </dict>
 </plist>
 

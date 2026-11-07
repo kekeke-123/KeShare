@@ -12,7 +12,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-#define KS_VERSION_STRING   @"1.0.0"
+#define KS_VERSION_STRING   @"1.0.1"
 #define KS_BUILD_STRING     @"1"
 #define KS_PROTO_VERSION    1
 #define KS_DATA_PORT        47377

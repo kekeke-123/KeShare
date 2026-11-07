@@ -28,6 +28,16 @@ UIColor *KSSystemAccent(void);
 - (void)startAdvertising;
 - (void)startScanning;
 - (void)stopScanning;
+- (BOOL)connectPeripheral:(id)peripheral;
+@end
+
+/// 蓝牙发现：扫描到附近设备时回调
+@protocol KSDiscoveryLink <KSDirectLink>
+@property (nonatomic, copy, nullable) void (^onPeerFound)(KSDevice *peer, id peripheral);
+@end
+/// KSServer 的蓝牙发现入口（实现在 KSNetData.m）
+@interface KSServer (Discovery)
+- (nullable id<KSDiscoveryLink>)bleLink;
 @end
 #pragma mark - 网络小工具（KSInternal.m 里实现）
 
@@ -43,6 +53,8 @@ NSString *KSIPv4StringLocal(void);
 @property (nonatomic, copy, nullable) NSString *tempPath;
 @property (nonatomic, copy, nullable) NSString *finalPath;
 @property (nonatomic, copy, nullable) NSString *expectedHash;
+@property (nonatomic, copy, nullable) NSString *servePath;     // 非空 = 本机是发送方，要写数据帧
+@property (nonatomic, assign) BOOL awaitingAck;                // 已发完，等对端 hash_resp
 @property (nonatomic, assign) unsigned long long totalSize;
 @property (nonatomic, assign) unsigned long long done;
 @property (nonatomic, strong, nullable) KSTransfer *publicTransfer;
