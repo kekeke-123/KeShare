@@ -48,41 +48,6 @@ UIColor *KSSystemAccent(void);
 /// SHA-256（CommonCrypto）：完整性摘要与 token 都用它
 NSString *KSSHA256HexOfData(NSData *data);
 NSString *KSSHA256HexOfFile(NSString *path, NSError **error);
-#pragma mark - 自研玻璃视觉库（KSGlassKit.m）
-
-typedef NS_ENUM(NSInteger, KSGlassKind) {
-    KSGlassKindLiquid = 0,
-    KSGlassKindFrosted,
-    KSGlassKindLiquidForced      // 强制液态：忽略温控
-};
-
-typedef NS_ENUM(NSInteger, KSGlassQuality) {
-    KSGlassQualityFull = 0,
-    KSGlassQualityReduced,
-    KSGlassQualityFrosted
-};
-
-@interface KSGlassTokens : NSObject
-+ (UIColor *)bg;
-+ (UIColor *)bg2;
-+ (UIColor *)panel;
-+ (UIColor *)stroke;
-+ (UIColor *)fg;
-+ (UIColor *)muted;
-+ (UIColor *)mix:(UIColor *)a with:(UIColor *)b t:(CGFloat)t;
-@end
-
-@interface KSGlassThermal : NSObject
-@property (class, nonatomic, readonly) KSGlassThermal *shared;
-@property (nonatomic, assign) BOOL enabled;          // 默认 NO
-@property (nonatomic, assign, readonly) KSGlassQuality level;
-- (void)refresh;
-@end
-
-@interface KSGlassView2 : UIView
-@property (nonatomic, assign) KSGlassKind style;
-@property (nonatomic, assign) CGFloat radius;
-@end
 #pragma mark - 自适应根容器（KSRoot.m）
 
 /// 宽屏（>=700pt）返回侧边栏容器，窄屏返回 nil（由调用方回退到标签栏）

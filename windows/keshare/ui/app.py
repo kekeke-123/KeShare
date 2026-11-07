@@ -237,6 +237,25 @@ class KeShareApp(tk.Tk):
         self._build_files_tab()
         self.show_page("devices")
 
+    def _ensure_backdrop(self):
+        """生成/更新窗口背景（深色底 + 色斑），供玻璃面板做折射采样。"""
+        try:
+            from . import frosted
+            w = max(320, self.winfo_width())
+            h = max(240, self.winfo_height())
+            key = (w // 16, h // 16)
+            if getattr(self, "_backdrop_key", None) == key and getattr(self, "_backdrop_img", None):
+                return
+            self._backdrop_key = key
+            self._backdrop_img = frosted.make_backdrop(w, h, self.palette)
+            self._backdrop_origin = (self.winfo_rootx(), self.winfo_rooty())
+        except Exception:
+            self._backdrop_img = None
+
+    def _backdrop_provider(self):
+        self._ensure_backdrop()
+        origin = getattr(self, "_backdrop_origin", (self.winfo_rootx(), self.winfo_rooty()))
+        return getattr(self, "_backdrop_img", None), origin
     def show_page(self, key):
         page = self._page_map.get(key)
         if page is None:
@@ -247,7 +266,8 @@ class KeShareApp(tk.Tk):
 
     def _build_about_tab(self):
         tab = ttk.Frame(self.notebook, padding=18)
-        card = glass.GlassPanel(tab, self.palette, style=self.glass_style(), height=260)
+        card = glass.GlassPanel(tab, self.palette, style=self.glass_style(), height=260,
+                                backdrop=self._backdrop_provider)
         card.pack(fill="x", pady=(0, 12))
         body = card.body
         tk.Label(body, text="KeShare", bg=self.palette["panel"],

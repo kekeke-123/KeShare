@@ -39,7 +39,7 @@
 - (void)viewDidLoad
 {
     [super viewDidLoad];
-    self.view.backgroundColor = KSGlassTokens.bg;
+    self.view.backgroundColor = [UIColor colorWithRed:0.043 green:0.059 blue:0.102 alpha:1.0];
 
     // ---- 侧边栏 ----
     self.sidebar = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];

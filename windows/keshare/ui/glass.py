@@ -16,6 +16,7 @@ from __future__ import annotations
 import ctypes
 import math
 import random
+from . import frosted
 import tkinter as tk
 from tkinter import font as tkfont
 
@@ -168,7 +169,7 @@ class GlassPanel(tk.Canvas):
     """玻璃面板：液态 / 磨砂，带圆角、渐变、顶部高光。"""
 
     def __init__(self, master, palette, style="liquid", quality="full",
-                 radius=18, padding=14, height=None, **kw):
+                 radius=18, padding=14, height=None, backdrop=None, **kw):
         p = palette
         super().__init__(master, bg=p["bg"], highlightthickness=0, bd=0,
                          height=height or 120, **kw)
@@ -177,7 +178,9 @@ class GlassPanel(tk.Canvas):
         self.quality = quality
         self.radius = radius
         self.pad = padding
-        self.body = tk.Frame(self, bg=p["panel"])
+        self.backdrop = backdrop          # 回调：返回 (PIL 背景图, 窗口左上角绝对坐标)
+        self._photo = None
+        self.body = tk.Frame(self, bg="#121826")
         self._win = self.create_window(padding, padding, anchor="nw", window=self.body)
         self._noise = []
         self._build_noise()
@@ -201,7 +204,28 @@ class GlassPanel(tk.Canvas):
         p = self.p
         self.delete("chrome")
 
+        # 磨砂玻璃：从窗口背景取样 + 模糊 + 半透明底色
+        if self.backdrop is not None:
+            try:
+                from PIL import ImageTk
+                image, origin = self.backdrop()
+                if image is not None:
+                    rx = self.winfo_rootx() - origin[0]
+                    ry = self.winfo_rooty() - origin[1]
+                    glass_img = frosted.frosted_layer(image, (rx, ry, w, h), self.radius,
+                                                      tint=(18, 24, 38), alpha=0.62, blur=12.0)
+                    self._photo = ImageTk.PhotoImage(glass_img)
+                    self.create_image(0, 0, anchor="nw", image=self._photo, tags="chrome")
+                    self.tag_lower("chrome")
+            except Exception:
+                pass
         base = mix(p["panel"], p["bg"], 0.25 if self.style == "liquid" else 0.55)
+        if self._photo is not None:
+            self.itemconfigure(self._win, width=max(1, w - self.pad * 2))
+            need = self.body.winfo_reqheight() + self.pad * 2
+            if need > h:
+                self.configure(height=need)
+            return
         if self.style == "liquid":
             draw_rounded(self, 1, 1, w - 1, h - 1, self.radius, base,
                          outline=mix(p["stroke"], p["accent"], 0.25), width=1, tags="chrome")

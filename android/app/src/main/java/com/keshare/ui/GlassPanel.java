@@ -11,8 +11,8 @@ import android.util.AttributeSet;
 import android.view.View;
 
 /**
- * 玻璃面板：液态 / 磨砂，圆角 + 渐变 + 顶部高光 + 磨砂噪点。
- * 与 Windows 端 GlassPanel 绘制策略一致（自绘，不用系统模糊）。
+ * 磨砂玻璃面板：圆角 + 渐变 + 顶部高光 + 颗粒噪点（不做折射）。
+ * 与 Windows 端 frosted.py 策略一致：半透明 + 噪点 + 描边。
  */
 public class GlassPanel extends View {
 
