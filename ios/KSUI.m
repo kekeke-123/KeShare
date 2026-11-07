@@ -661,6 +661,10 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls
     ]];
 
     [self buildActionBar];
+    self.navigationItem.rightBarButtonItem =
+        [[UIBarButtonItem alloc] initWithTitle:@"清除"
+                                         style:UIBarButtonItemStylePlain
+                                        target:self action:@selector(clearFinished)];
     [self reload];
 
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(reload)
@@ -758,7 +762,6 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls
     [[KSTransferCenter shared] clearFinished];
     [self reload];
 }
-
 - (void)reload
 {
     // 手指正在滑动/减速时不要重载，否则会打断左滑手势

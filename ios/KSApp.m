@@ -362,6 +362,15 @@ static void KSHandleUncaughtException(NSException *exception)
 {
     [[KSLog shared] info:@"进入后台"];
     [[KSServer shared] stop];
+    // 后台 socket 会被系统掐断，未完成的任务直接标失败，别让列表永远停在“进行中”
+    for (KSTransfer *t in [KSTransferCenter shared].transfers) {
+        if (t.state == KSTransferStateDone || t.state == KSTransferStateFailed) continue;
+        t.state = KSTransferStateFailed;
+        t.errorText = @"应用进入后台，传输中断";
+        t.speedBps = 0;
+    }
+    [[NSNotificationCenter defaultCenter] postNotificationName:KSTransfersDidChangeNotification
+                                                        object:nil];
 }
 
 - (void)applicationWillEnterForeground:(UIApplication *)application
