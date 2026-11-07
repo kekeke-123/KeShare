@@ -136,12 +136,12 @@ NSString *KSHashOfData(NSData *data)
             @"receive_dir": @"Received",
             @"allow_upload": @YES,
             @"allow_clipboard": @YES,
-            // Lite 版更激进：更大分块、更高并发、不限速；稳定版保守一些
+            // 传输参数：1 MB 分块、4 路并发、1 MB socket 缓冲、不限速
             @"max_speed_kbps": @0,
-            @"max_file_mb": @(KS_LITE ? 8192 : 2048),
-            @"chunk_kb": @(KS_LITE ? 1024 : 64),
-            @"concurrency": @(KS_LITE ? 4 : 2),
-            @"socket_buffer_kb": @(KS_LITE ? 1024 : 256)
+            @"max_file_mb": @8192,
+            @"chunk_kb": @1024,
+            @"concurrency": @4,
+            @"socket_buffer_kb": @1024
         },
         @"network": @{
             @"port": @(KS_DATA_PORT),
