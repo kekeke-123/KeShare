@@ -44,6 +44,21 @@ UIColor *KSSystemAccent(void);
 /// SHA-256（CommonCrypto）：完整性摘要与 token 都用它
 NSString *KSSHA256HexOfData(NSData *data);
 NSString *KSSHA256HexOfFile(NSString *path, NSError **error);
+#pragma mark - 断点续传（KSResume.m）
+
+@interface KSResumeStore : NSObject
++ (NSString *)directory;
++ (NSString *)keyForPath:(NSString *)path size:(long long)size hash:(NSString *)hash;
++ (NSString *)partPathForKey:(NSString *)key;
++ (NSString *)metaPathForKey:(NSString *)key;
+/// 返回 {path,size,hash,offset,peer,direction,mtime}；无有效断点返回 nil
++ (NSDictionary *)entryForKey:(NSString *)key;
++ (BOOL)saveEntry:(NSDictionary *)entry key:(NSString *)key error:(NSError **)error;
++ (void)removeEntryForKey:(NSString *)key;
+/// days <= 0 表示永不清理
++ (NSInteger)cleanupExpiredWithKeepDays:(NSInteger)days;
++ (unsigned long long)totalBytes;
+@end
 #pragma mark - UDP 发现（KSDisc.m）
 
 void KSDiscoveryStart(void);

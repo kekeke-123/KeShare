@@ -22,7 +22,7 @@ OUT        := build
 APP_DIR    := $(OUT)/$(APP).app
 
 SRC_C      :=
-SRC_M      := main.m KSApp.m KSStore.m KSInternal.m KSDisc.m KSNet.m KSNetData.m KSNetServe.m KSSession.m KSWiFi.m KSDevGate.m KSUI.m KSActivityShim.m
+SRC_M      := main.m KSApp.m KSStore.m KSInternal.m KSDisc.m KSNet.m KSNetData.m KSNetServe.m KSSession.m KSWiFi.m KSDevGate.m KSResume.m KSUI.m KSActivityShim.m
 SRC_SWIFT  :=
 
 OBJ        := $(patsubst %.c,$(OUT)/%.o,$(notdir $(SRC_C))) \
