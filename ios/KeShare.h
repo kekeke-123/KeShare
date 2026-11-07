@@ -105,6 +105,8 @@ typedef NS_ENUM(NSInteger, KSTransferState) {
 @property (nonatomic, assign) NSInteger maxSpeedKBps;   // 0 = 不限速
 @property (nonatomic, assign) NSInteger maxFileMB;
 @property (nonatomic, assign) NSInteger concurrency;
+@property (nonatomic, assign) BOOL legalAccepted;
+@property (nonatomic, assign) NSInteger resumeKeepDays;
 @property (nonatomic, assign) NSInteger chunkKB;
 @property (nonatomic, assign) NSInteger port;
 @property (nonatomic, assign) BOOL autoAcceptPairing;
