@@ -20,7 +20,7 @@ public class ThermalGuard {
     public float hotC = 60f;
     public float switchC = 80f;
     public float temperature = Float.NaN;
-    public String level = "full";
+    public String level = "full";   // full | reduced | minimal
 
     private Listener listener;
     private final Context context;
@@ -55,7 +55,7 @@ public class ThermalGuard {
         if (Float.isNaN(temperature)) {
             setLevel("full");
         } else if (temperature >= switchC) {
-            setLevel("frosted");
+            setLevel("minimal");
         } else if (temperature >= hotC) {
             setLevel("reduced");
         } else {

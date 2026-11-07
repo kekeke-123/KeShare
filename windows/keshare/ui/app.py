@@ -240,14 +240,14 @@ class KeShareApp(tk.Tk):
     def _ensure_backdrop(self):
         """生成/更新窗口背景（深色底 + 色斑），供玻璃面板做折射采样。"""
         try:
-            from . import frosted
+            from . import haze
             w = max(320, self.winfo_width())
             h = max(240, self.winfo_height())
             key = (w // 16, h // 16)
             if getattr(self, "_backdrop_key", None) == key and getattr(self, "_backdrop_img", None):
                 return
             self._backdrop_key = key
-            self._backdrop_img = frosted.make_backdrop(w, h, self.palette)
+            self._backdrop_img = haze.make_backdrop(w, h, self.palette)
             self._backdrop_origin = (self.winfo_rootx(), self.winfo_rooty())
         except Exception:
             self._backdrop_img = None

@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-"""磨砂玻璃渲染（Windows）。
+"""Haze —— KeShare 的统一磨砂视觉语言（Windows 实现）。
 
-只做"磨砂"：半透明底色 + 高斯模糊 + 细噪点 + 描边。
-**不做折射、不做色散、不做 SDF 高度场** —— 那套已从工程中移除。
+"Haze" 是 KeShare 从 0.0.1 beta1 起采用的视觉语言名，指**磨砂玻璃**：
+半透明底色 + 背景模糊 + 颗粒噪点 + 圆角 + 1px 描边 + 顶部柔光。
+不含折射、不含色散、不含 SDF 高度场 —— 那套（液态玻璃）已从工程移除。
 
 为什么只留磨砂
 --------------
@@ -11,9 +12,12 @@
 
 对外接口
 --------
-    make_backdrop(w, h, palette)            窗口背景（深色底 + 柔和色斑）
-    blur_region(image, rect, blur)          取指定区域并模糊（供控件采样）
-    frosted_layer(size, radius, ...)        生成一块磨砂玻璃（RGBA）
+    HAZE_VERSION                            视觉语言版本
+    HAZE                                    设计令牌（圆角/模糊/噪点/描边/透明度）
+    make_backdrop(w, h, palette)            窗口背景（深色底 + 柔和光斑）
+    blur_region(image, rect, blur)          取指定区域并模糊
+    haze_layer(background, rect, ...)       生成一块 Haze 面板（RGBA）
+    paint_haze(image, rect, ...)            直接把 Haze 面板画到整窗图上
 """
 from __future__ import annotations
 
@@ -22,6 +26,21 @@ import random
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
+
+HAZE_VERSION = "1.0"
+HAZE_NAME = "Haze"
+
+# Haze 设计令牌（三端共用同一组数值，改这里即三端同改）
+HAZE = {
+    "radius_panel": 22,      # 卡片圆角
+    "radius_pill": 34,       # 胶囊圆角
+    "blur": 12.0,            # 背景模糊半径
+    "alpha": 0.62,           # 底色权重（0 全透 / 1 实心）
+    "noise": 1.8,            # 颗粒噪点强度
+    "highlight": 0.20,       # 顶部柔光
+    "border": 0.16,          # 描边不透明度
+    "tint": (18, 24, 38),    # 底色
+}
 
 # ---------------------------------------------------------------- 背景
 def make_backdrop(width, height, palette=None):
@@ -89,8 +108,8 @@ def _rounded_mask(size, radius, supersample=3):
     return big.resize((w, h), Image.LANCZOS)
 
 
-def frosted_layer(background, rect, radius=18, tint=(18, 24, 38), alpha=0.62,
-                  blur=12.0, noise=1.8, highlight=0.20, border=0.16):
+def haze_layer(background, rect, radius=None, tint=None, alpha=None,
+               blur=None, noise=None, highlight=None, border=None):
     """生成一块磨砂玻璃（RGBA）。
 
     background : 整窗背景图
@@ -102,6 +121,14 @@ def frosted_layer(background, rect, radius=18, tint=(18, 24, 38), alpha=0.62,
     highlight  : 顶部高光强度
     border     : 描边强度
     """
+    radius = HAZE["radius_panel"] if radius is None else radius
+    tint = HAZE["tint"] if tint is None else tint
+    alpha = HAZE["alpha"] if alpha is None else alpha
+    blur = HAZE["blur"] if blur is None else blur
+    noise = HAZE["noise"] if noise is None else noise
+    highlight = HAZE["highlight"] if highlight is None else highlight
+    border = HAZE["border"] if border is None else border
+
     x, y, w, h = [int(round(v)) for v in rect]
     w = max(8, w)
     h = max(8, h)
@@ -141,9 +168,9 @@ def frosted_layer(background, rect, radius=18, tint=(18, 24, 38), alpha=0.62,
     return layer
 
 
-def glass_image(image, rect, radius=18, **kw):
+def paint_haze(image, rect, radius=None, **kw):
     """便捷入口：把磨砂面板直接画到整窗图上。"""
-    layer = frosted_layer(image, rect, radius, **kw)
+    layer = haze_layer(image, rect, radius, **kw)
     x, y = int(rect[0]), int(rect[1])
     image.alpha_composite(layer, (x, y))
     return image
@@ -152,7 +179,7 @@ def glass_image(image, rect, radius=18, **kw):
 if __name__ == "__main__":
     bg = make_backdrop(900, 600)
     canvas = bg.convert("RGBA")
-    glass_image(canvas, (80, 80, 420, 220), 22)
-    glass_image(canvas, (520, 400, 300, 90), 45, alpha=0.72, blur=16)
-    canvas.convert("RGB").save("D:/KeShare/.scratch/frosted-demo.png")
-    print("已输出 frosted-demo.png")
+    paint_haze(canvas, (80, 80, 420, 220), 22)
+    paint_haze(canvas, (520, 400, 300, 90), 45, alpha=0.72, blur=16)
+    canvas.convert("RGB").save("D:/KeShare/.scratch/haze-demo.png")
+    print("Haze", HAZE_VERSION, "已输出 haze-demo.png")

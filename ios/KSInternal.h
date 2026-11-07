@@ -48,6 +48,28 @@ UIColor *KSSystemAccent(void);
 /// SHA-256（CommonCrypto）：完整性摘要与 token 都用它
 NSString *KSSHA256HexOfData(NSData *data);
 NSString *KSSHA256HexOfFile(NSString *path, NSError **error);
+#pragma mark - Haze 视觉语言（KSHaze.m）
+
+extern CGFloat const KSHazeRadiusPanel;
+extern CGFloat const KSHazeRadiusPill;
+extern CGFloat const KSHazeBorderAlpha;
+extern CGFloat const KSHazeHighlightAlpha;
+
+/// 磨砂玻璃面板：系统材质 + 底色叠加 + 顶部柔光 + 1px 描边
+@interface KSHaze : UIView
+@property (nonatomic, assign) CGFloat radius;
+@property (nonatomic, assign) CGFloat alphaWeight;
+@property (nonatomic, strong, readonly) UIView *content;
+@property (nonatomic, strong) UIVisualEffectView *blurView;
+@property (nonatomic, strong) UIView *tintView;
+@property (nonatomic, strong) UIView *highlightView;
+@property (nonatomic, strong) CAGradientLayer *highlightLayer;
++ (UIColor *)tintColor;
++ (UIColor *)panelColor;
++ (UIBlurEffect *)blurEffect;
++ (instancetype)panelWithFrame:(CGRect)frame radius:(CGFloat)radius;
++ (instancetype)pillWithFrame:(CGRect)frame;
+@end
 #pragma mark - 自适应根容器（KSRoot.m）
 
 /// 宽屏（>=700pt）返回侧边栏容器，窄屏返回 nil（由调用方回退到标签栏）

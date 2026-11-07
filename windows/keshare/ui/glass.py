@@ -16,7 +16,7 @@ from __future__ import annotations
 import ctypes
 import math
 import random
-from . import frosted
+from . import haze
 import tkinter as tk
 from tkinter import font as tkfont
 
@@ -212,7 +212,7 @@ class GlassPanel(tk.Canvas):
                 if image is not None:
                     rx = self.winfo_rootx() - origin[0]
                     ry = self.winfo_rooty() - origin[1]
-                    glass_img = frosted.frosted_layer(image, (rx, ry, w, h), self.radius,
+                    glass_img = haze.haze_layer(image, (rx, ry, w, h), self.radius,
                                                       tint=(18, 24, 38), alpha=0.62, blur=12.0)
                     self._photo = ImageTk.PhotoImage(glass_img)
                     self.create_image(0, 0, anchor="nw", image=self._photo, tags="chrome")

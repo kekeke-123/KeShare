@@ -36,7 +36,7 @@ import time
 import tkinter as tk
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 
-from . import frosted
+from . import haze
 
 # ---------------------------------------------------------------- 主题
 _FONT_CANDIDATES = [
@@ -130,7 +130,7 @@ class GlassSurface(object):
         radius = GlassTheme.radius_panel if radius is None else radius
         if opacity is not None:
             alpha = max(0.05, min(0.98, 1.0 - opacity * 0.5))
-        layer = frosted.frosted_layer(self._backdrop_image, rect, radius,
+        layer = haze.haze_layer(self._backdrop_image, rect, radius,
                                       tint=GlassTheme.tint, alpha=alpha, blur=blur)
         self.image.alpha_composite(layer, (int(rect[0]), int(rect[1])))
     def attach_scene(self, backdrop_image):
@@ -542,7 +542,7 @@ class GlassApp(tk.Tk):
         self.configure(bg="#0B0F1A")
 
         self._win_w, self._win_h = width, height
-        self._backdrop_image = frosted.make_backdrop(width, height, GlassTheme.palette())
+        self._backdrop_image = haze.make_backdrop(width, height, GlassTheme.palette())
         self.roots = []
         self._dirty = True
         self._last_draw = 0.0
@@ -590,7 +590,7 @@ class GlassApp(tk.Tk):
         if (event.width, event.height) == (self._win_w, self._win_h):
             return
         self._win_w, self._win_h = event.width, event.height
-        self._backdrop_image = frosted.make_backdrop(self._win_w, self._win_h, GlassTheme.palette())
+        self._backdrop_image = haze.make_backdrop(self._win_w, self._win_h, GlassTheme.palette())
         self.invalidate()
 
     def _on_motion(self, px, py):
