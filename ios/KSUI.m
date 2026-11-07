@@ -335,7 +335,16 @@
         [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd
                                                       target:self action:@selector(importTapped)]
     ];
+    self.navigationItem.leftBarButtonItem =
+        [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"magnifyingglass"]
+                                         style:UIBarButtonItemStylePlain
+                                        target:self action:@selector(openSearch)];
     [self reload];
+}
+
+- (void)openSearch
+{
+    [self.navigationController pushViewController:[[KSSearchViewController alloc] init] animated:YES];
 }
 
 - (void)viewWillAppear:(BOOL)animated
@@ -851,6 +860,19 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls
     }];
 }
 
+- (void)viewWillAppear:(BOOL)animated
+{
+    [super viewWillAppear:animated];
+    [self rebuildRows];
+    if (!self.ticker) {
+        __weak typeof(self) weakSelf = self;
+        self.ticker = [NSTimer scheduledTimerWithTimeInterval:0.6 repeats:YES block:^(NSTimer *t) {
+            [weakSelf rebuildRows];
+            [weakSelf.table reloadData];
+        }];
+    }
+}
+
 - (void)viewWillDisappear:(BOOL)animated
 {
     [super viewWillDisappear:animated];
@@ -1219,6 +1241,177 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls
         done(YES);
     }];
     return [UISwipeActionsConfiguration configurationWithActions:@[del]];
+}
+
+@end
+
+#pragma mark - 全局搜索
+
+@interface KSSearchViewController : KSViewController <UITableViewDataSource, UITableViewDelegate, UISearchBarDelegate>
+@property (nonatomic, strong) UISearchBar *searchBar;
+@property (nonatomic, strong) UITableView *table;
+@property (nonatomic, strong) NSArray<NSDictionary *> *results;
+@end
+
+@implementation KSSearchViewController
+
+- (void)viewDidLoad
+{
+    [super viewDidLoad];
+    self.title = @"搜索";
+    self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeNever;
+
+    self.searchBar = [[UISearchBar alloc] init];
+    self.searchBar.placeholder = @"搜索文件名 / 传输任务 / 设置项";
+    self.searchBar.delegate = self;
+    self.searchBar.searchBarStyle = UISearchBarStyleMinimal;
+    self.searchBar.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:self.searchBar];
+
+    self.table = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStyleInsetGrouped];
+    self.table.backgroundColor = UIColor.clearColor;
+    self.table.dataSource = self;
+    self.table.delegate = self;
+    self.table.rowHeight = 58;
+    self.table.keyboardDismissMode = UIScrollViewKeyboardDismissModeOnDrag;
+    self.table.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:self.table];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [self.searchBar.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
+        [self.searchBar.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:12],
+        [self.searchBar.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-12],
+        [self.table.topAnchor constraintEqualToAnchor:self.searchBar.bottomAnchor],
+        [self.table.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.table.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.table.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
+    ]];
+
+    [self buildResults:@""];
+}
+
+- (void)viewDidAppear:(BOOL)animated
+{
+    [super viewDidAppear:animated];
+    [self.searchBar becomeFirstResponder];
+}
+
+- (NSArray<NSString *> *)settingItems
+{
+    return @[@"设备名称", @"设备 ID", @"端口", @"发现方式", @"自动连接历史设备",
+             @"分块大小", @"限速", @"自动接受", @"断点续传保留时长",
+             @"接收目录", @"撤销同意用户协议", @"开发者模式"];
+}
+
+- (void)buildResults:(NSString *)keyword
+{
+    NSString *key = [keyword stringByTrimmingCharactersInSet:
+                     [NSCharacterSet whitespaceCharacterSet]].lowercaseString;
+    NSMutableArray *out = [NSMutableArray array];
+
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSMutableArray *dirs = [NSMutableArray array];
+    if (KSConfig.shared.shareRoot.length) [dirs addObject:KSConfig.shared.shareRoot];
+    if (KSConfig.shared.receivePath.length) [dirs addObject:KSConfig.shared.receivePath];
+    NSMutableArray *seen = [NSMutableArray array];
+    for (NSString *dir in dirs) {
+        NSArray *names = [fm contentsOfDirectoryAtPath:dir error:NULL] ?: @[];
+        for (NSString *name in names) {
+            NSString *full = [dir stringByAppendingPathComponent:name];
+            if ([seen containsObject:full]) continue;
+            [seen addObject:full];
+            if (key.length && ![name.lowercaseString containsString:key]) continue;
+            [out addObject:@{@"group": @"文件", @"title": name,
+                             @"sub": [NSString stringWithFormat:@"%@ · %@",
+                                      KSFormatBytes(KSFileSize(full)),
+                                      [dir isEqualToString:KSConfig.shared.receivePath] ? @"已接收" : @"共享目录"],
+                             @"path": full}];
+        }
+    }
+
+    for (KSTransfer *t in [KSTransferCenter shared].transfers) {
+        if (key.length && ![t.fileName.lowercaseString containsString:key]) continue;
+        [out addObject:@{@"group": @"传输任务", @"title": t.fileName ?: @"—",
+                         @"sub": [NSString stringWithFormat:@"%@ · %@", t.stateLabel,
+                                  t.direction == KSTransferDirectionUpload ? @"发送" : @"接收"],
+                         @"tid": t.transferId ?: @""}];
+    }
+
+    for (NSString *item in [self settingItems]) {
+        if (key.length && ![item.lowercaseString containsString:key]) continue;
+        [out addObject:@{@"group": @"设置", @"title": item, @"sub": @"设置", @"setting": @YES}];
+    }
+
+    self.results = out;
+    [self.table reloadData];
+}
+
+- (void)searchBar:(UISearchBar *)bar textDidChange:(NSString *)text
+{
+    [self buildResults:text];
+}
+
+- (void)searchBarSearchButtonClicked:(UISearchBar *)bar
+{
+    [bar resignFirstResponder];
+}
+
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tv { return 1; }
+
+- (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)section
+{
+    return MAX(1, (NSInteger)self.results.count);
+}
+
+- (NSString *)tableView:(UITableView *)tv titleForHeaderInSection:(NSInteger)section
+{
+    return self.results.count ? @"搜索结果" : nil;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tv cellForRowAtIndexPath:(NSIndexPath *)ip
+{
+    static NSString *cid = @"search";
+    UITableViewCell *cell = [tv dequeueReusableCellWithIdentifier:cid];
+    if (!cell) {
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:cid];
+        cell.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.06];
+        cell.textLabel.textColor = UIColor.whiteColor;
+        cell.detailTextLabel.textColor = KSThemeTextSecondary();
+    }
+    if (self.results.count == 0) {
+        cell.textLabel.text = @"没有匹配结果";
+        cell.detailTextLabel.text = @"换个关键词试试：文件名、任务名或设置项";
+        cell.accessoryType = UITableViewCellAccessoryNone;
+        return cell;
+    }
+    NSDictionary *item = self.results[ip.row];
+    cell.textLabel.text = item[@"title"];
+    cell.detailTextLabel.text = [NSString stringWithFormat:@"%@ · %@",
+                                 item[@"group"], item[@"sub"]];
+    cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+    return cell;
+}
+
+- (void)tableView:(UITableView *)tv didSelectRowAtIndexPath:(NSIndexPath *)ip
+{
+    [tv deselectRowAtIndexPath:ip animated:YES];
+    if (ip.row >= (NSInteger)self.results.count) return;
+    NSDictionary *item = self.results[ip.row];
+    if (item[@"tid"]) {
+        KSTransfer *t = [[KSTransferCenter shared] transferWithId:item[@"tid"]];
+        if (!t) return;
+        KSTransferDetailViewController *vc = [[KSTransferDetailViewController alloc] init];
+        vc.transfer = t;
+        [self.navigationController pushViewController:vc animated:YES];
+    } else if (item[@"setting"]) {
+        [self.navigationController pushViewController:[[KSSettingsViewController alloc] init]
+                                            animated:YES];
+    } else if (item[@"path"]) {
+        NSString *path = item[@"path"];
+        UIActivityViewController *av = [[UIActivityViewController alloc]
+            initWithActivityItems:@[[NSURL fileURLWithPath:path]] applicationActivities:nil];
+        [self presentViewController:av animated:YES completion:nil];
+    }
 }
 
 @end

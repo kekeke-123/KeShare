@@ -282,6 +282,10 @@ NSString *KSKindNameForDevice(KSDeviceKind kind);
 @interface KSManualDevicesViewController : KSViewController
 @end
 
+/// 全局搜索：文件名 / 传输任务 / 设置项
+@interface KSSearchViewController : KSViewController
+@end
+
 /// 传输任务详情（进度 / 速度 / 校验 / 暂停 / 取消）
 @interface KSTransferDetailViewController : KSViewController
 @property (nonatomic, strong) KSTransfer *transfer;
