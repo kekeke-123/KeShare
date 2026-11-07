@@ -18,6 +18,7 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 from .. import KSAPP_DISPLAY, KSAPP_NAME
 from .. import clipboard, files, protocol
 from ..client import KSClient
+from . import glass
 from .theme import font as theme_font
 from .dev_tab import DevTab
 from .remote_browser import RemoteBrowser
@@ -64,7 +65,11 @@ class KeShareApp(tk.Tk):
         self._dev_tab = None
         self._transfer_busy = False
         self._remote_browser = None
-        self.palette = DARK if config.theme == "dark" else LIGHT
+        self.palette = glass.DARK if config.theme == "dark" else glass.LIGHT
+        glass.apply_tk_scaling(self)
+        ui_cfg = config.data.get("ui", {})
+        self.thermal = glass.ThermalGuard(enabled=bool(ui_cfg.get("thermal_auto", False)))
+        self.thermal.on_change(lambda level: self.after(0, self._on_thermal_change))
 
         self.title("%s %s" % (KSAPP_NAME, KSAPP_DISPLAY))
         self.geometry("1000x660")
@@ -94,7 +99,7 @@ class KeShareApp(tk.Tk):
     # theming / layout
     # ------------------------------------------------------------------
     def _apply_theme(self):
-        self.palette = DARK if self.config_obj.theme == "dark" else LIGHT
+        self.palette = glass.DARK if self.config_obj.theme == "dark" else glass.LIGHT
         style = ttk.Style(self)
         try:
             style.theme_use("clam")
@@ -159,8 +164,51 @@ class KeShareApp(tk.Tk):
         ttk.Label(right, textvariable=self.integrity_var, style="Sub.TLabel").pack(anchor="e")
 
     def _build_notebook(self):
-        self.notebook = ttk.Notebook(self)
-        self.notebook.pack(fill="both", expand=True, padx=10, pady=(10, 4))
+        """左侧边栏 + 右侧内容区（替代原来的平铺 Notebook）。"""
+        shell = tk.Frame(self, bg=self.palette["bg"])
+        shell.pack(fill="both", expand=True)
+
+        # ---- 侧边栏 ----
+        self.sidebar = tk.Frame(shell, bg=self.palette["bg2"], width=214)
+        self.sidebar.pack(side="left", fill="y")
+        self.sidebar.pack_propagate(False)
+
+        brand = tk.Frame(self.sidebar, bg=self.palette["bg2"], height=78)
+        brand.pack(fill="x")
+        tk.Label(brand, text="KeShare", bg=self.palette["bg2"],
+                 fg=self.palette["fg"], font=glass.font(16, "bold"),
+                 anchor="w").pack(fill="x", padx=22, pady=(18, 0))
+        tk.Label(brand, text="0.0.1 beta1", bg=self.palette["bg2"],
+                 fg=self.palette["muted"], font=glass.font(9),
+                 anchor="w").pack(fill="x", padx=22)
+
+        self._nav_items = {}
+        nav_specs = [
+            ("devices", "◉", "设备"),
+            ("files", "▤", "文件"),
+            ("settings", "⚙", "设置"),
+            ("about", "ⓘ", "关于"),
+        ]
+        for key, glyph, text in nav_specs:
+            item = glass.SidebarItem(self.sidebar, self.palette, glyph, text,
+                                     command=lambda k=key: self.show_page(k))
+            item.pack(fill="x", pady=2)
+            self._nav_items[key] = item
+
+        # 温控 / 材质提示区
+        footer = tk.Frame(self.sidebar, bg=self.palette["bg2"])
+        footer.pack(side="bottom", fill="x", pady=12)
+        self.glass_mode_var = tk.StringVar(value="材质：液态玻璃")
+        tk.Label(footer, textvariable=self.glass_mode_var, bg=self.palette["bg2"],
+                 fg=self.palette["muted"], font=glass.font(9),
+                 anchor="w").pack(fill="x", padx=22)
+
+        # ---- 内容区 ----
+        self.content = tk.Frame(shell, bg=self.palette["bg"])
+        self.content.pack(side="left", fill="both", expand=True)
+
+        self.notebook = glass.PageStack(self.content, self.palette)
+        self.notebook.pack(fill="both", expand=True)
 
         self.devices_tab = ttk.Frame(self.notebook, padding=10)
         self.files_tab = ttk.Frame(self.notebook, padding=10)
@@ -169,14 +217,72 @@ class KeShareApp(tk.Tk):
             self.notebook, self.config_obj, self.log,
             on_save=self._on_settings_saved,
             on_unlock_dev=self._add_dev_tab)
+        self.about_tab = self._build_about_tab()
 
-        self.notebook.add(self.devices_tab, text="附近设备")
-        self.notebook.add(self.files_tab, text="我的文件")
-        self.notebook.add(self.transfers_tab, text="传输记录")
+        self.notebook.add(self.devices_tab, text="设备")
+        self.notebook.add(self.files_tab, text="文件")
+        self.notebook.add(self.transfers_tab, text="传输")
         self.notebook.add(self.settings_tab, text="设置")
+        self.notebook.add(self.about_tab, text="关于")
+
+        self._page_map = {
+            "devices": self.devices_tab,
+            "files": self.files_tab,
+            "transfers": self.transfers_tab,
+            "settings": self.settings_tab,
+            "about": self.about_tab,
+        }
 
         self._build_devices_tab()
         self._build_files_tab()
+        self.show_page("devices")
+
+    def show_page(self, key):
+        page = self._page_map.get(key)
+        if page is None:
+            return
+        self.notebook.select(page)
+        for name, item in self._nav_items.items():
+            item.set_selected(name == key)
+
+    def _build_about_tab(self):
+        tab = ttk.Frame(self.notebook, padding=18)
+        card = glass.GlassPanel(tab, self.palette, style=self.glass_style(), height=260)
+        card.pack(fill="x", pady=(0, 12))
+        body = card.body
+        tk.Label(body, text="KeShare", bg=self.palette["panel"],
+                 fg=self.palette["fg"], font=glass.font(18, "bold"),
+                 anchor="w").pack(fill="x")
+        tk.Label(body, text="局域网 / 热点 / USB 直连文件互传", bg=self.palette["panel"],
+                 fg=self.palette["muted"], font=glass.font(10), anchor="w").pack(fill="x", pady=(2, 12))
+        rows = [
+            ("版本", KSAPP_DISPLAY),
+            ("内核版本", "0.0.1-beta1+kernel.1"),
+            ("协议版本", "KS/1"),
+            ("完整性校验", "SHA-256"),
+            ("数据通道", "TCP 47377"),
+        ]
+        for name, value in rows:
+            row = tk.Frame(body, bg=self.palette["panel"])
+            row.pack(fill="x", pady=3)
+            tk.Label(row, text=name, bg=self.palette["panel"], fg=self.palette["muted"],
+                     font=glass.font(10), anchor="w", width=12).pack(side="left")
+            tk.Label(row, text=value, bg=self.palette["panel"], fg=self.palette["fg"],
+                     font=glass.font(10), anchor="w").pack(side="left")
+        card.redraw()
+        return tab
+
+    def glass_style(self):
+        """当前玻璃风格：liquid / frosted，受设置与温控影响。"""
+        mode = self.config_obj.data.get("ui", {}).get("glass_mode", "auto")
+        if mode == "frosted":
+            return "frosted"
+        if mode == "liquid":
+            return "liquid"
+        guard = getattr(self, "thermal", None)
+        if guard is not None and guard.enabled and guard.level == "frosted":
+            return "frosted"
+        return "liquid"
 
     def _build_devices_tab(self):
         tab = self.devices_tab

@@ -48,6 +48,12 @@ UIColor *KSSystemAccent(void);
 /// SHA-256（CommonCrypto）：完整性摘要与 token 都用它
 NSString *KSSHA256HexOfData(NSData *data);
 NSString *KSSHA256HexOfFile(NSString *path, NSError **error);
+#pragma mark - 自适应根容器（KSRoot.m）
+
+/// 宽屏（>=700pt）返回侧边栏容器，窄屏返回 nil（由调用方回退到标签栏）
+UIViewController *KSRootMakeIfWide(NSArray<UINavigationController *> *pages,
+                                   NSArray<NSString *> *titles,
+                                   NSArray<NSString *> *glyphs);
 #pragma mark - 法律性文稿（KSLegal.m）
 
 UIViewController *KSLegalMakeViewController(void (^onFinish)(BOOL accepted));
