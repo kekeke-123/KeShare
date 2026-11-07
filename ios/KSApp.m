@@ -338,6 +338,18 @@ static void KSHandleUncaughtException(NSException *exception)
     self.window.rootViewController = tab;
     [self.window makeKeyAndVisible];
 
+    // 未同意法律性文稿时先展示该页，同意后再启动服务
+    if (!KSConfig.shared.legalAccepted) {
+        __weak typeof(self) weakSelf = self;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            KSLegalPresentIfNeeded(weakSelf.window.rootViewController, ^{
+                [[KSServer shared] start];
+            });
+        });
+        return YES;
+    }
+
     [[KSServer shared] start];
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{

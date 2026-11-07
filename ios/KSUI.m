@@ -636,6 +636,13 @@
         return cell;
     }
     if (ip.row == 2) return [self cellWithTitle:@"协议版本" detail:KS_PROTOCOL_VERSION switchOn:NO];
+    if (ip.row == 3) {
+        UITableViewCell *cell = [self cellWithTitle:@"用户协议与隐私政策"
+                                             detail:@"已同意"
+                                           switchOn:NO];
+        cell.textLabel.textColor = KSTheme.shared.accent;
+        return cell;
+    }
     if (KSConfig.shared.developerUnlocked && ip.row == 4) {
         return [self cellWithTitle:@"开发者选项" detail:@"" switchOn:NO];
     }
