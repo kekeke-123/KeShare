@@ -302,10 +302,13 @@ class HazeUI(object):
 
     # ---------------------------------------------------------------- 文件页
     def _page_files(self):
+        actions = [("导入发送", self._haze_import_and_send, True),
+                   ("打开目录", self._open_share_folder, False)]
+        if self._browse_rel:
+            actions.insert(0, ("上一级", self._haze_files_up, False))
         widgets = self._page_header(
-            "文件",
-            actions=[("导入发送", self._haze_import_and_send, True),
-                     ("打开目录", self._open_share_folder, False)],
+            "文件" + (" / " + self._browse_rel if self._browse_rel else ""),
+            actions=actions,
             subtitle="接收目录：%s" % (getattr(self.config_obj, "receive_dir", "") or "—"),
         )
         widgets += self._page_list(
@@ -315,11 +318,24 @@ class HazeUI(object):
             on_context=self._haze_file_context)
         return widgets
 
-    def _haze_file_rows(self):
-        rows = []
-        # 文件页只做「已接收」：读接收目录，不是共享根
+    def _haze_files_up(self):
+        if not self._browse_rel:
+            return
+        self._browse_rel = self._browse_rel.rsplit("/", 1)[0] if "/" in self._browse_rel else ""
+        self.show_haze_page("files")
+
+    def _haze_receive_root(self):
         import os as _os
         root = getattr(self.config_obj, "receive_dir", "") or ""
+        if self._browse_rel:
+            root = _os.path.join(root, self._browse_rel)
+        return root
+
+    def _haze_file_rows(self):
+        rows = []
+        # 文件页只做「已接收」：读接收目录（支持一层层进入子目录）
+        import os as _os
+        root = self._haze_receive_root()
         entries = []
         try:
             for name in _os.listdir(root):
@@ -338,6 +354,9 @@ class HazeUI(object):
                                         (e.get("name") or "").lower()))
         except OSError:
             entries = []
+        if self._browse_rel:
+            rows.append({"glyph": "files", "title": "← 上一级",
+                         "subtitle": "回到上一层目录", "right": "", "_up": True})
         for entry in entries:
             name = entry.get("name") or ""
             if entry.get("kind") == "dir":
@@ -353,6 +372,9 @@ class HazeUI(object):
     def _haze_file_selected(self, index, row):
         if not isinstance(row, dict):
             return
+        if row.get("_up"):
+            self._haze_files_up()
+            return
         name = row.get("title") or ""
         rel = (self._browse_rel + "/" + name).lstrip("/") if self._browse_rel else name
         try:
@@ -367,10 +389,11 @@ class HazeUI(object):
     def _haze_file_context(self, index, row, px, py):
         """文件行右键：发送 / 复制路径 / 在资源管理器打开 / 删除。"""
         name = (row or {}).get("title") or ""
-        if not name:
+        if not name or (row or {}).get("_up"):
             return
         rel = (self._browse_rel + "/" + name).lstrip("/") if self._browse_rel else name
         is_dir = bool((row or {}).get("_dir"))
+        abs_path = _os.path.join(self._haze_receive_root(), name)
 
         def send():
             self._haze_push_path(rel)
@@ -378,7 +401,7 @@ class HazeUI(object):
         def copy_path():
             try:
                 from .. import clipboard
-                clipboard.copy_text(_os.path.join(self.config_obj.receive_dir, name))
+                clipboard.copy_text(abs_path)
                 self.toast.show("已复制路径", rel, "ok")
             except Exception as exc:
                 self.toast.show("复制失败", str(exc), "error")
@@ -386,9 +409,8 @@ class HazeUI(object):
         def reveal():
             try:
                 import subprocess
-                path = _os.path.join(self.config_obj.receive_dir, name)
                 flag = "/select," if not is_dir else ""
-                subprocess.Popen(["explorer", flag + path])
+                subprocess.Popen(["explorer", flag + abs_path])
             except Exception as exc:
                 self.toast.show("打开失败", str(exc), "error")
 
@@ -401,11 +423,10 @@ class HazeUI(object):
             try:
                 import os
                 import shutil
-                path = _os.path.join(self.config_obj.receive_dir, name)
                 if is_dir:
-                    shutil.rmtree(path)
+                    shutil.rmtree(abs_path)
                 else:
-                    os.remove(path)
+                    os.remove(abs_path)
                 self.toast.show("已删除", name, "warn")
                 self.show_haze_page("files")
             except Exception as exc:
