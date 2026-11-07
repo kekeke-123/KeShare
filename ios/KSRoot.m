@@ -10,6 +10,7 @@
 
 #import "KeShare.h"
 #import "KSInternal.h"
+#import <objc/message.h>
 
 @interface KSRootController : UIViewController <UITableViewDataSource, UITableViewDelegate>
 @property (nonatomic, strong) NSArray<UINavigationController *> *pages;
@@ -38,7 +39,7 @@
 - (void)viewDidLoad
 {
     [super viewDidLoad];
-    self.view.backgroundColor = KSTheme.shared.background;
+    self.view.backgroundColor = KSGlassTokens.bg;
 
     // ---- 侧边栏 ----
     self.sidebar = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
