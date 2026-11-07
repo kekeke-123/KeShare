@@ -49,6 +49,17 @@ jobs:
           lipo -info build/KeShare.app/KeShare
           otool -l build/KeShare.app/KeShare | grep -A4 LC_BUILD_VERSION || true
 
+      - name: 安装 ldid 并伪签名
+        run: |
+          curl -fsSL -o /tmp/ldid \
+            https://github.com/ProcursusTeam/ldid/releases/download/v2.1.5-procursus7/ldid_macosx_x86_64
+          chmod +x /tmp/ldid
+          export PATH=/tmp:$PATH
+          cd ios
+          make sign LDID=/tmp/ldid
+          echo "--- 签名校验 ---"
+          /tmp/ldid -e build/KeShare.app/KeShare || true
+          codesign -dv build/KeShare.app 2>&1 | head -5 || true
       - name: 打包 IPA
         run: |
           cd ios

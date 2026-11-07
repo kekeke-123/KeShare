@@ -41,7 +41,7 @@ LDFLAGS    := -target $(TARGET) -isysroot $(SDK) \
               -framework Network -framework ActivityKit -framework WidgetKit \
               -framework SwiftUI -framework UniformTypeIdentifiers
 
-.PHONY: all app ipa clean
+.PHONY: all app sign ipa clean
 
 all: app
 
@@ -87,7 +87,19 @@ $(EXT_DIR)/$(EXT): Widget/KeShareActivityAttributes.swift Widget/KeShareWidgetBu
 	@plutil -replace CFBundleVersion -string "$(BUILD)" $(EXT_DIR)/Info.plist
 	@echo "built: $(EXT_DIR)"
 
-ipa: app
+# 伪签名（越狱设备安装必需）。没有 ldid 时跳过并提示。
+LDID ?= $(shell command -v ldid 2>/dev/null || echo /tmp/ldid)
+
+sign: app
+	@if [ -x "$(LDID)" ]; then \
+		$(LDID) -S$(PWD)/entitlements.plist $(EXT_DIR)/$(EXT) && \
+		$(LDID) -S$(PWD)/entitlements.plist $(APP_DIR)/$(APP) && \
+		echo "signed: $(APP_DIR)"; \
+	else \
+		echo "!! 未找到 ldid，IPA 将保持未签名（越狱机能装，普通设备装不上）"; \
+	fi
+
+ipa: sign
 	@rm -rf $(OUT)/Payload $(OUT)/$(APP).ipa
 	@mkdir -p $(OUT)/Payload
 	@cp -R $(APP_DIR) $(OUT)/Payload/
