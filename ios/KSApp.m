@@ -258,7 +258,11 @@ static void KSHandleUncaughtException(NSException *exception)
     [text writeToFile:[dir stringByAppendingPathComponent:@"crash.log"]
            atomically:YES encoding:NSUTF8StringEncoding error:NULL];
 }
-@interface KSAppDelegate ()\n- (void)reportPreviousCrashIfAny;\n@end\n\n@implementation KSAppDelegate
+@interface KSAppDelegate ()
+- (void)reportPreviousCrashIfAny;
+@end
+
+@implementation KSAppDelegate
 
 - (void)reportPreviousCrashIfAny
 {
