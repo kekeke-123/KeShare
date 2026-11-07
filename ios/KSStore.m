@@ -4,6 +4,7 @@
 //
 
 #import "KeShare.h"
+#import "KSInternal.h"
 #import <Security/Security.h>
 
 NSNotificationName const KSConfigDidChangeNotification = @"KSConfigDidChange";
