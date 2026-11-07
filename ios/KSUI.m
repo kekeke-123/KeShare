@@ -422,6 +422,9 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls
         }
     }
     [self reload];
+    // 导入的文件进的是共享目录，直接切到那一段，别让人以为没导入成功
+    self.segment.selectedSegmentIndex = 0;
+    [self reload];
     if (copied.count == 0) return;
 
     // 有已连接设备就直接发，否则提示去连接
@@ -1294,7 +1297,7 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls
 
 #pragma mark - 设备详情
 
-@interface KSDeviceDetailViewController () <UITableViewDataSource, UITableViewDelegate, UIDocumentPickerDelegate>
+@interface KSDeviceDetailViewController () <UITableViewDataSource, UITableViewDelegate, UIDocumentPickerDelegate, KSSessionDelegate>
 @property (nonatomic, strong) UITableView *table;
 @property (nonatomic, strong) KSSession *session;
 @property (nonatomic, strong) NSArray<KSTransfer *> *recent;
@@ -1319,12 +1322,31 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls
     self.session = [[KSServer shared].sessions objectForKey:self.peer.deviceId ?: @""];
     if (!self.session) {
         self.session = [[KSSession alloc] initWithPeer:self.peer];
+        self.session.delegate = self;
         [self.session startAsInitiator:YES];
         if (self.peer.deviceId.length) {
             [[KSServer shared].sessions setObject:self.session forKey:self.peer.deviceId];
         }
     }
     [self reloadRecent];
+}
+
+#pragma mark KSSessionDelegate（连接状态变化时刷新）
+
+- (void)session:(KSSession *)session didUpdatePeer:(KSDevice *)peer
+{
+    [self.table reloadData];
+}
+
+- (void)session:(KSSession *)session didReceiveTransferUpdate:(KSTransfer *)transfer
+{
+    [self reloadRecent];
+}
+
+- (void)session:(KSSession *)session didFail:(NSString *)error
+{
+    [self ks_showError:error code:@"Conn"
+                  hint:@"确认两端在同一 Wi-Fi、端口 47377 未被防火墙拦"];
 }
 
 - (void)viewWillAppear:(BOOL)animated

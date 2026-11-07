@@ -465,11 +465,13 @@ class HazeUI(object):
             total = int(t.get("size") or 0)
             pct = (100.0 * done / total) if total else 0.0
             direction = "接收" if t.get("direction") == "in" else "发送"
+            speed = t.get("speed") or ""
             rows.append({
                 "glyph": "transfer",
                 "title": t.get("name") or "未命名",
-                "subtitle": "%s · %s / %s · %.0f%%" % (
-                    direction, G.human_size(done), G.human_size(total), pct),
+                "subtitle": "%s · %s / %s · %.0f%%%s" % (
+                    direction, G.human_size(done), G.human_size(total), pct,
+                    (" · " + speed) if speed else ""),
                 "right": t.get("state") or "",
                 "progress": (done / total) if total else 0.0,
                 "_tid": t.get("id") or t.get("tid"),
@@ -702,7 +704,8 @@ class HazeUI(object):
         widgets.append(G.GlassButton(self, (x + w - 130, y + 30, 108, 42), "返回",
                                      lambda: self.show_haze_page("transfers")))
 
-        done = int(info.get("done") or info.get("received") or 0)
+        # to_dict 的 "done" 是布尔（是否结束），进度必须读 received
+        done = int(info.get("received") or 0)
         total = int(info.get("size") or 0)
         ratio = (done / total) if total else 0.0
         state = info.get("state") or ("暂停" if info.get("paused") else "进行中")

@@ -309,12 +309,20 @@ class Transfer(object):
             state = "进行中"
         else:
             state = "等待"
+        elapsed = max(0.001, time.time() - self.created)
+        speed = ""
+        if self.received and not self.done and not self.paused:
+            bps = self.received / elapsed
+            if bps >= 1024 * 1024:
+                speed = "%.1f MB/s" % (bps / 1024.0 / 1024.0)
+            elif bps >= 1024:
+                speed = "%.0f KB/s" % (bps / 1024.0)
         return {
             "id": self.tid, "name": self.name, "size": self.size,
             "received": self.received, "digest": self.digest,
             "error": self.error, "path": self.path, "part": self.part,
             "direction": self.direction, "kind": self.kind, "done": self.done,
-            "paused": bool(self.paused), "state": state,
+            "paused": bool(self.paused), "state": state, "speed": speed,
         }
 
 
