@@ -38,7 +38,7 @@ DEFAULTS = {
         "allow_clipboard": True,
         "max_speed_kbps": 0,
         "max_file_mb": 2048,
-        "chunk_kb": 64,
+        "chunk_kb": 1024,
     },
     "network": {
         "port": 47377,
@@ -279,7 +279,7 @@ class Config(object):
         share["allow_clipboard"] = _as_bool(share.get("allow_clipboard"), True)
         share["max_speed_kbps"] = _as_int(share.get("max_speed_kbps"), 0, 0, 1048576)
         share["max_file_mb"] = _as_int(share.get("max_file_mb"), 2048, 1, 1048576)
-        share["chunk_kb"] = _as_int(share.get("chunk_kb"), 64, 4, 4096)
+        share["chunk_kb"] = _as_int(share.get("chunk_kb"), 1024, 4, 4096)
 
         net = d["network"]
         net["port"] = _as_int(net.get("port"), 47377, 1, 65535)

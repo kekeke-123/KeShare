@@ -427,7 +427,7 @@ class ConfigTests(TempMixin, unittest.TestCase):
         self.assertEqual(len(cfg.device_id), 16)
         self.assertEqual(len(cfg.secret_hex), 64)
         self.assertEqual(cfg.port, 47377)
-        self.assertEqual(cfg.data["share"]["chunk_kb"], 64)
+        self.assertEqual(cfg.data["share"]["chunk_kb"], 1024)
         self.assertEqual(cfg.data["ui"]["theme"], "dark")
         self.assertTrue(os.path.isfile(path))
         with open(path, "rb") as handle:
@@ -466,7 +466,7 @@ class ConfigTests(TempMixin, unittest.TestCase):
         self.assertEqual(cfg.device_name, "只有名字")
         self.assertEqual(cfg.port, 65535)
         self.assertEqual(cfg.max_speed_kbps, 0)
-        self.assertEqual(cfg.data["share"]["chunk_kb"], 64)
+        self.assertEqual(cfg.data["share"]["chunk_kb"], 1024)
         self.assertIn("developer", cfg.data)
 
     def test_typed_accessors(self):

@@ -48,6 +48,12 @@ def open_data_socket(host, port, timeout=20.0):
         raise DataError("无法建立数据通道 %s:%s -- %s" % (host, port, exc), "io")
     try:
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        # 1 MB 收发缓冲：局域网/热点下显著减少系统调用，吞吐能翻倍
+        try:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 1 << 20)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1 << 20)
+        except OSError:
+            pass
     except OSError:
         pass
     return sock
