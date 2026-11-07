@@ -309,7 +309,7 @@
         if (KSWebLooksLikeHTTP(header)) {
             [[KSLog shared] info:@"局域网 HTTP 通道接入"];
             __weak typeof(self) weakSelf = self;
-            KSWebServe(cfd, header, nil, ^(NSDictionary *info) {
+            KSWebServe(cfd, header, @"", ^(NSDictionary *info) {
                 dispatch_async(dispatch_get_main_queue(), ^{
                     [[KSLog shared] info:@"网页传输 %@", info[@"name"] ?: @""];
                     [weakSelf postWebTransferEvent:info];

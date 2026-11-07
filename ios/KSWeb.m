@@ -247,7 +247,7 @@ static BOOL KSWebParseRange(NSString *value, long long total, long long *start, 
     if (![value hasPrefix:@"bytes="]) return NO;
     NSString *spec = [[value substringFromIndex:6] componentsSeparatedByString:@","].firstObject;
     spec = [spec stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
-    NSArray *parts = [spec componentsSeparatedByString:@"-"];
+    NSArray<NSString *> *parts = [spec componentsSeparatedByString:@"-"];
     if (parts.count != 2) return NO;
     long long a = [parts[0] longLongValue];
     long long b = [parts[1] longLongValue];
