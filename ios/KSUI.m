@@ -405,7 +405,6 @@
 @end
 
 @implementation KSTransfersViewController
-@implementation KSTransfersViewController
 
 - (void)presentTransferError:(NSString *)reason
 {
