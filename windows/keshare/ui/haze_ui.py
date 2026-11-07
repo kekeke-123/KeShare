@@ -140,6 +140,21 @@ class HazeUI(object):
                 self.add(w)
         self.invalidate()
 
+    # ---------------------------------------------------------------- 通用
+    def _popup_menu(self, px, py, items):
+        """在鼠标位置弹一个原生菜单（items = [(label, callback), ...]）。"""
+        try:
+            import tkinter as tk
+            menu = tk.Menu(self, tearoff=0)
+            for label, cb in items:
+                if label == "-":
+                    menu.add_separator()
+                else:
+                    menu.add_command(label=label, command=cb)
+            menu.tk_popup(int(self.winfo_rootx() + px), int(self.winfo_rooty() + py))
+        except Exception as exc:
+            self.toast.show("菜单不可用", str(exc), "error")
+
     # ---------------------------------------------------------------- 公共块
     def _content_rect(self):
         return (264, 24, self._win_w - 264 - 28, self._win_h - 48)
@@ -163,13 +178,14 @@ class HazeUI(object):
         return widgets
 
     def _page_list(self, rows, on_select=None, empty_text="暂无内容", empty_hint="",
-                   header_height=126):
+                   header_height=126, on_context=None):
         x, y, w, h = self._content_rect()
         top = y + header_height
         panel = G.GlassPanel(self, (x, top, w, h - header_height), radius=28, solid_alpha=210)
         lst = G.GlassList(self, (x + 16, top + 16, w - 32, h - header_height - 32),
                           rows=rows, row_height=64, on_select=on_select,
-                          empty_text=empty_text, empty_hint=empty_hint)
+                          empty_text=empty_text, empty_hint=empty_hint,
+                          on_context=on_context)
         return [panel, lst]
 
     # ---------------------------------------------------------------- 设备页
@@ -185,7 +201,8 @@ class HazeUI(object):
         widgets += self._page_list(
             peers, on_select=self._haze_device_selected,
             empty_text="附近没有设备",
-            empty_hint="让电脑开热点 KeShare-XXXX，或用「手动连接」填 IP")
+            empty_hint="让电脑开热点 KeShare-XXXX，或用「手动连接」填 IP",
+            on_context=self._haze_device_context)
         return widgets
 
     def _haze_status_code(self):
@@ -239,6 +256,38 @@ class HazeUI(object):
         th.daemon = True
         th.start()
 
+    def _haze_device_context(self, index, row, px, py):
+        """设备行右键：复制 IP / 手动重连 / 移除。"""
+        peer = (row or {}).get("_peer") or {}
+        ip = peer.get("ip") or ""
+        name = peer.get("name") or ip or "设备"
+
+        def copy_ip():
+            try:
+                from .. import clipboard
+                clipboard.copy_text(ip)
+                self.toast.show("已复制 IP", ip, "ok")
+            except Exception as exc:
+                self.toast.show("复制失败", str(exc), "error")
+
+        def reconnect():
+            self._haze_device_selected(index, row)
+
+        def remove():
+            try:
+                self.discovery.forget(peer.get("did"))
+                self.toast.show("已移除", name, "warn")
+                self.show_haze_page("devices")
+            except Exception as exc:
+                self.toast.show("移除失败", str(exc), "error")
+
+        self._popup_menu(px, py, [
+            ("复制 IP", copy_ip),
+            ("手动重连", reconnect),
+            "-",
+            ("从列表移除", remove),
+        ])
+
     # ---------------------------------------------------------------- 文件页
     def _page_files(self):
         widgets = self._page_header(
@@ -250,17 +299,32 @@ class HazeUI(object):
         widgets += self._page_list(
             self._haze_file_rows(), on_select=self._haze_file_selected,
             empty_text="还没有接收的文件",
-            empty_hint="点右上角「导入发送」选择文件，或等对端推送")
+            empty_hint="点右上角「导入发送」选择文件，或等对端推送",
+            on_context=self._haze_file_context)
         return widgets
 
     def _haze_file_rows(self):
         rows = []
+        # 文件页只做「已接收」：读接收目录，不是共享根
+        import os as _os
+        root = getattr(self.config_obj, "receive_dir", "") or ""
+        entries = []
         try:
-            resp = self._share.listdir(self._browse_rel)
-            entries = sorted(resp.get("files") or [],
-                             key=lambda e: (0 if e.get("kind") == "dir" else 1,
-                                            (e.get("name") or "").lower()))
-        except Exception:
+            for name in _os.listdir(root):
+                full = _os.path.join(root, name)
+                try:
+                    st = _os.stat(full)
+                except OSError:
+                    continue
+                entries.append({
+                    "name": name,
+                    "kind": "dir" if _os.path.isdir(full) else "file",
+                    "size": int(st.st_size),
+                    "mtime": int(st.st_mtime),
+                })
+            entries.sort(key=lambda e: (0 if e.get("kind") == "dir" else 1,
+                                        (e.get("name") or "").lower()))
+        except OSError:
             entries = []
         for entry in entries:
             name = entry.get("name") or ""
@@ -287,6 +351,62 @@ class HazeUI(object):
                 self._haze_push_path(rel)
         except Exception as exc:
             self.toast.show("操作失败", str(exc), "error")
+
+    def _haze_file_context(self, index, row, px, py):
+        """文件行右键：发送 / 复制路径 / 在资源管理器打开 / 删除。"""
+        name = (row or {}).get("title") or ""
+        if not name:
+            return
+        rel = (self._browse_rel + "/" + name).lstrip("/") if self._browse_rel else name
+        is_dir = bool((row or {}).get("_dir"))
+
+        def send():
+            self._haze_push_path(rel)
+
+        def copy_path():
+            try:
+                from .. import clipboard
+                clipboard.copy_text(_os.path.join(self.config_obj.receive_dir, name))
+                self.toast.show("已复制路径", rel, "ok")
+            except Exception as exc:
+                self.toast.show("复制失败", str(exc), "error")
+
+        def reveal():
+            try:
+                import subprocess
+                path = _os.path.join(self.config_obj.receive_dir, name)
+                flag = "/select," if not is_dir else ""
+                subprocess.Popen(["explorer", flag + path])
+            except Exception as exc:
+                self.toast.show("打开失败", str(exc), "error")
+
+        def delete():
+            from tkinter import messagebox
+            if not messagebox.askyesno("确认删除",
+                                       "确定删除「%s」？此操作不可撤销。" % name,
+                                       parent=self):
+                return
+            try:
+                import os
+                import shutil
+                path = _os.path.join(self.config_obj.receive_dir, name)
+                if is_dir:
+                    shutil.rmtree(path)
+                else:
+                    os.remove(path)
+                self.toast.show("已删除", name, "warn")
+                self.show_haze_page("files")
+            except Exception as exc:
+                self.toast.show("删除失败", str(exc), "error")
+
+        items = []
+        if not is_dir:
+            items.append(("发送到已连接设备", send))
+        items += [("复制完整路径", copy_path),
+                  ("在资源管理器中显示", reveal),
+                  "-",
+                  ("删除", delete)]
+        self._popup_menu(px, py, items)
 
     def _haze_push_path(self, rel_path):
         """把共享目录里的文件推给已连接设备；没有连接则提示。"""
@@ -318,7 +438,8 @@ class HazeUI(object):
         widgets += self._page_list(
             self._haze_transfer_rows(), on_select=None,
             empty_text="没有传输任务",
-            empty_hint="从「文件」页推送文件，或在「设备」页接收对端推送")
+            empty_hint="从「文件」页推送文件，或在「设备」页接收对端推送",
+            on_context=self._haze_transfer_context)
         return widgets
 
     def _haze_transfer_rows(self):
@@ -338,8 +459,36 @@ class HazeUI(object):
                 "subtitle": "%s · %s / %s · %.0f%%" % (
                     direction, G.human_size(done), G.human_size(total), pct),
                 "right": t.get("state") or "",
+                "progress": (done / total) if total else 0.0,
+                "_tid": t.get("id") or t.get("tid"),
             })
         return rows
+
+    def _haze_transfer_context(self, index, row, px, py):
+        """传输行右键：取消这个任务 / 复制文件名 / 打开所在目录。"""
+        tid = (row or {}).get("_tid")
+        name = (row or {}).get("title") or ""
+
+        def cancel_one():
+            try:
+                self.registry.cancel(tid)
+                self.toast.show("已取消", name, "warn")
+                self.show_haze_page("transfers")
+            except Exception as exc:
+                self.toast.show("取消失败", str(exc), "error")
+
+        def copy_name():
+            try:
+                from .. import clipboard
+                clipboard.copy_text(name)
+                self.toast.show("已复制文件名", name, "ok")
+            except Exception as exc:
+                self.toast.show("复制失败", str(exc), "error")
+
+        items = [("复制文件名", copy_name)]
+        if tid:
+            items = [("取消这个任务", cancel_one)] + items
+        self._popup_menu(px, py, items)
 
     def _haze_transfer_summary(self):
         try:

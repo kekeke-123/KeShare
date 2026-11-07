@@ -291,6 +291,13 @@ class GlassWidget(object):
                 return True
         return False
 
+    def on_context(self, px, py):
+        """右键；返回 True 表示已处理。"""
+        for child in reversed(self.children):
+            if child.on_context(px, py):
+                return True
+        return False
+
     def step_anims(self, dt):
         """推进自身动画；返回 True 表示仍在变化（需要继续重绘）。"""
         moving = False
@@ -399,11 +406,12 @@ class GlassList(GlassWidget):
     """自绘列表：行高固定、支持滚动、hover、选中、行内副标题与右侧文字。"""
 
     def __init__(self, app, rect, rows=None, row_height=58, on_select=None,
-                 empty_text="暂无内容", empty_hint=""):
+                 empty_text="暂无内容", empty_hint="", on_context=None):
         super().__init__(app, rect, 0)
         self.rows = rows or []
         self.row_height = row_height
         self.on_select = on_select
+        self.on_context_cb = on_context
         self.empty_text = empty_text
         self.empty_hint = empty_hint
         self.selected = -1
@@ -462,6 +470,9 @@ class GlassList(GlassWidget):
             if glyph:
                 draw_glyph(surface, glyph, tx + 8, ry + rh / 2, 9, color)
                 tx += 30
+            # 标题按可用宽度截断（右侧留给状态文字与边距）
+            avail = max(60, rw - (tx - rx) - (150 if right else 40))
+            title = self._fit(surface, title, 13, avail, True)
             if subtitle:
                 surface.text((tx, ry + 12), title, 13, color, True)
                 surface.text((tx, ry + 32), subtitle, 11, GlassTheme.muted)
@@ -471,7 +482,44 @@ class GlassList(GlassWidget):
                 surface.text((rx + rw - 20, ry + rh / 2 - 9), right, 12,
                              GlassTheme.muted, anchor="ra")
 
+            ratio = row.get("progress")
+            if ratio is not None:
+                self._draw_row_progress(surface, (rx, ry, rw, rh), ratio)
+
     # -- 事件 --
+    @staticmethod
+    def _fit(surface, text, size, max_width, bold=False):
+        """按像素宽度截断文本，超出加省略号。"""
+        text = str(text or "")
+        try:
+            if surface.text_width(text, size, bold) <= max_width:
+                return text
+        except Exception:
+            return text
+        lo, hi = 0, len(text)
+        while lo < hi:
+            mid = (lo + hi + 1) // 2
+            try:
+                w = surface.text_width(text[:mid] + "…", size, bold)
+            except Exception:
+                return text[:mid]
+            if w <= max_width:
+                lo = mid
+            else:
+                hi = mid - 1
+        return text[:lo] + ("…" if lo < len(text) else "")
+
+    def _draw_row_progress(self, surface, rect, ratio):
+        """行内进度条（传输任务用）。"""
+        rx, ry, rw, rh = rect
+        bar_h = 3
+        by = ry + rh - bar_h - 6
+        surface.rounded((rx + 18, by, rw - 36, bar_h), bar_h / 2,
+                        fill=(255, 255, 255, 22))
+        w = max(2, (rw - 36) * max(0.0, min(1.0, ratio)))
+        surface.rounded((rx + 18, by, w, bar_h), bar_h / 2,
+                        fill=GlassTheme.accent + (220,))
+
     def _index_at(self, px, py):
         if not self.contains(px, py) or not self.rows:
             return -1
@@ -495,6 +543,18 @@ class GlassList(GlassWidget):
                 self.on_select(idx, self.rows[idx])
             return True
         return super().on_press(px, py)
+
+    def on_context(self, px, py):
+        if not self.contains(px, py):
+            return False
+        idx = self._index_at(px, py)
+        if idx < 0 or idx >= len(self.rows):
+            return False
+        self.selected = idx
+        self.app.invalidate()
+        if self.on_context_cb:
+            self.on_context_cb(idx, self.rows[idx], px, py)
+        return True
 
     def on_wheel(self, px, py, delta):
         if not self.contains(px, py):
@@ -547,6 +607,22 @@ class GlassSidebar(GlassWidget):
             color = GlassTheme.fg if active else GlassTheme.muted
             draw_glyph(surface, item.get("glyph", ""), rx + 26, ry + rh / 2, 8, color)
             surface.text((rx + 44, ry + rh / 2 - 10), item.get("title", ""), 14, color, active)
+
+    def set_selected(self, index, notify=True):
+        """选中某项。立即对齐指示条与渐变，避免切页后侧栏停留。"""
+        if not self.items:
+            return
+        index = max(0, min(int(index), len(self.items) - 1))
+        self.selected = index
+        self.hover = -1
+        self._indicator_y = float(self.y + self.item_top + index * self.item_height)
+        if len(self._t) < len(self.items):
+            self._t.extend([0.0] * (len(self.items) - len(self._t)))
+        for i in range(len(self._t)):
+            self._t[i] = 1.0 if i == index else 0.0
+        if notify and self.on_select:
+            self.on_select(index, self.items[index])
+        self.app.invalidate()
 
     def _index_at(self, px, py):
         if not (self.x <= px < self.x + self.width):
@@ -612,6 +688,7 @@ class GlassApp(tk.Tk):
             ("<Motion>", lambda e: self._on_motion(e.x, e.y)),
             ("<Button-1>", lambda e: self._on_press(e.x, e.y)),
             ("<ButtonRelease-1>", lambda e: self._on_release(e.x, e.y)),
+            ("<Button-3>", lambda e: self._on_context(e.x, e.y)),
             ("<MouseWheel>", lambda e: self._on_wheel(e.x, e.y, e.delta / 120.0)),
             ("<Leave>", lambda e: self._on_motion(-10, -10)),
         ):
@@ -665,6 +742,12 @@ class GlassApp(tk.Tk):
         for widget in reversed(self.roots):
             if widget.on_release(px, py):
                 break
+
+    def _on_context(self, px, py):
+        for widget in reversed(self.roots):
+            if widget.on_context(px, py):
+                self.invalidate()
+                return
 
     def _on_wheel(self, px, py, delta):
         for widget in reversed(self.roots):
