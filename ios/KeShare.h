@@ -214,6 +214,7 @@ typedef NS_ENUM(NSInteger, KSTransferState) {
 - (instancetype)initWithPeer:(KSDevice *)peer;
 - (void)startAsInitiator:(BOOL)initiator;
 - (void)requestListing;
+- (void)requestListingPath:(NSString *)path;
 - (void)downloadPath:(NSString *)path;
 - (void)uploadFileAtPath:(NSString *)localPath;
 - (void)sendClipboardText:(NSString *)text;
@@ -284,6 +285,17 @@ NSString *KSKindNameForDevice(KSDeviceKind kind);
 
 /// 全局搜索：文件名 / 传输任务 / 设置项
 @interface KSSearchViewController : KSViewController
+@end
+
+/// 设备详情（发送 / 浏览对方文件 / 剪贴板 / 断开）
+@interface KSDeviceDetailViewController : KSViewController
+@property (nonatomic, strong) KSDevice *peer;
+@end
+
+/// 浏览对端共享目录（可下载）
+@interface KSRemoteFilesViewController : KSViewController
+@property (nonatomic, strong) KSSession *session;
+@property (nonatomic, copy) NSString *remotePath;
 @end
 
 /// 传输任务详情（进度 / 速度 / 校验 / 暂停 / 取消）

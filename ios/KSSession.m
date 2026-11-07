@@ -380,7 +380,14 @@
 
 - (void)requestListing
 {
-    [self.link sendMessage:@{ @"t": @"list", @"token": self.token ?: @"", @"path": @"" }];
+    [self requestListingPath:@""];
+}
+
+- (void)requestListingPath:(NSString *)path
+{
+    self.lastListing = @[];
+    [self.link sendMessage:@{ @"t": @"list", @"token": self.token ?: @"",
+                              @"path": path ?: @"" }];
 }
 
 - (void)downloadPath:(NSString *)path

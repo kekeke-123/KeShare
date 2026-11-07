@@ -259,8 +259,13 @@
     self.session = [[KSSession alloc] initWithPeer:d];
     self.session.delegate = self;
     [self.session startAsInitiator:YES];
+    if (d.deviceId.length) [[KSServer shared].sessions setObject:self.session forKey:d.deviceId];
     [[KSLog shared] info:@"正在连接 %@", d.name];
-    [self showStatus:[NSString stringWithFormat:@"正在连接 %@…", d.name]];
+    [self showStatus:[NSString stringWithFormat:@"002 正在握手 %@…", d.name]];
+
+    KSDeviceDetailViewController *vc = [[KSDeviceDetailViewController alloc] init];
+    vc.peer = d;
+    [self.navigationController pushViewController:vc animated:YES];
 }
 
 - (void)showStatus:(NSString *)text
@@ -1241,6 +1246,289 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls
         done(YES);
     }];
     return [UISwipeActionsConfiguration configurationWithActions:@[del]];
+}
+
+@end
+
+#pragma mark - 设备详情
+
+@interface KSDeviceDetailViewController () <UITableViewDataSource, UITableViewDelegate, UIDocumentPickerDelegate>
+@property (nonatomic, strong) UITableView *table;
+@property (nonatomic, strong) KSSession *session;
+@property (nonatomic, strong) NSArray<KSTransfer *> *recent;
+@end
+
+@implementation KSDeviceDetailViewController
+
+- (void)viewDidLoad
+{
+    [super viewDidLoad];
+    self.title = self.peer.name ?: @"设备";
+    self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeNever;
+
+    self.table = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
+    self.table.backgroundColor = UIColor.clearColor;
+    self.table.dataSource = self;
+    self.table.delegate = self;
+    self.table.rowHeight = 56;
+    self.table.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [self.view addSubview:self.table];
+
+    self.session = [[KSServer shared].sessions objectForKey:self.peer.deviceId ?: @""];
+    if (!self.session) {
+        self.session = [[KSSession alloc] initWithPeer:self.peer];
+        [self.session startAsInitiator:YES];
+        if (self.peer.deviceId.length) {
+            [[KSServer shared].sessions setObject:self.session forKey:self.peer.deviceId];
+        }
+    }
+    [self reloadRecent];
+}
+
+- (void)viewWillAppear:(BOOL)animated
+{
+    [super viewWillAppear:animated];
+    [self reloadRecent];
+}
+
+- (void)reloadRecent
+{
+    NSMutableArray *mine = [NSMutableArray array];
+    for (KSTransfer *t in [KSTransferCenter shared].transfers) {
+        if (t.peerName.length && [t.peerName isEqualToString:self.peer.name ?: @""]) {
+            [mine addObject:t];
+        }
+    }
+    self.recent = [mine count] > 5 ? [mine subarrayWithRange:NSMakeRange(0, 5)] : mine;
+    [self.table reloadData];
+}
+
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tv { return 3; }
+
+- (NSString *)tableView:(UITableView *)tv titleForHeaderInSection:(NSInteger)s
+{
+    return @[@"连接", @"可用操作", @"最近传输"][s];
+}
+
+- (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)s
+{
+    if (s == 0) return 3;
+    if (s == 1) return 4;
+    return MAX(1, (NSInteger)self.recent.count);
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tv cellForRowAtIndexPath:(NSIndexPath *)ip
+{
+    if (ip.section == 0) {
+        NSDictionary *rows = @{@0: @[@"设备名称", self.peer.name ?: @"—"],
+                               @1: @[@"类型", [self.peer kindLabel]],
+                               @2: @[@"地址", [NSString stringWithFormat:@"%@:%u",
+                                               self.peer.host ?: @"—", self.peer.port]]}[@(ip.row)];
+        UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1
+                                                       reuseIdentifier:nil];
+        cell.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.06];
+        cell.textLabel.text = rows[0];
+        cell.textLabel.textColor = UIColor.whiteColor;
+        cell.detailTextLabel.text = rows[1];
+        cell.detailTextLabel.textColor = KSThemeTextSecondary();
+        cell.selectionStyle = UITableViewCellSelectionStyleNone;
+        return cell;
+    }
+    if (ip.section == 1) {
+        NSArray *titles = @[@"发送文件", @"浏览对方文件", @"同步剪贴板", @"断开连接"];
+        UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault
+                                                       reuseIdentifier:nil];
+        cell.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.06];
+        cell.textLabel.text = titles[ip.row];
+        cell.textLabel.textColor = (ip.row == 3) ? [UIColor systemRedColor] : UIColor.whiteColor;
+        cell.textLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
+        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+        cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+        return cell;
+    }
+    UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle
+                                                   reuseIdentifier:nil];
+    cell.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.06];
+    if (self.recent.count == 0) {
+        cell.textLabel.text = @"还没有传输记录";
+        cell.textLabel.textColor = KSThemeTextSecondary();
+        cell.detailTextLabel.text = @"点上面「发送文件」开始";
+        cell.detailTextLabel.textColor = KSThemeTextSecondary();
+        cell.selectionStyle = UITableViewCellSelectionStyleNone;
+        return cell;
+    }
+    KSTransfer *t = self.recent[ip.row];
+    cell.textLabel.text = t.fileName;
+    cell.textLabel.textColor = UIColor.whiteColor;
+    cell.detailTextLabel.text = [NSString stringWithFormat:@"%@ · %@",
+                                 t.stateLabel, KSFormatBytes(t.total)];
+    cell.detailTextLabel.textColor = KSThemeTextSecondary();
+    cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+    cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+    return cell;
+}
+
+- (void)tableView:(UITableView *)tv didSelectRowAtIndexPath:(NSIndexPath *)ip
+{
+    [tv deselectRowAtIndexPath:ip animated:YES];
+    if (ip.section == 1) {
+        if (ip.row == 0) [self pickFile];
+        else if (ip.row == 1) [self openRemoteFiles];
+        else if (ip.row == 2) [self syncClipboard];
+        else [self disconnect];
+    } else if (ip.section == 2 && self.recent.count) {
+        KSTransferDetailViewController *vc = [[KSTransferDetailViewController alloc] init];
+        vc.transfer = self.recent[ip.row];
+        [self.navigationController pushViewController:vc animated:YES];
+    }
+}
+
+- (void)pickFile
+{
+    UIDocumentPickerViewController *picker =
+        [[UIDocumentPickerViewController alloc] initWithDocumentTypes:@[@"public.item"]
+                                                              inMode:UIDocumentPickerModeImport];
+    picker.allowsMultipleSelection = YES;
+    picker.delegate = self;
+    [self presentViewController:picker animated:YES completion:nil];
+}
+
+- (void)documentPicker:(UIDocumentPickerViewController *)controller
+didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls
+{
+    NSString *root = KSConfig.shared.shareRoot;
+    [[NSFileManager defaultManager] createDirectoryAtPath:root
+                              withIntermediateDirectories:YES attributes:nil error:NULL];
+    for (NSURL *url in urls) {
+        NSString *dest = [root stringByAppendingPathComponent:url.lastPathComponent];
+        [[NSFileManager defaultManager] removeItemAtPath:dest error:NULL];
+        if ([[NSFileManager defaultManager] copyItemAtPath:url.path toPath:dest error:NULL]) {
+            [self.session uploadFileAtPath:dest];
+        }
+    }
+    [self reloadRecent];
+}
+
+- (void)openRemoteFiles
+{
+    if (!self.session) return;
+    KSRemoteFilesViewController *vc = [[KSRemoteFilesViewController alloc] init];
+    vc.session = self.session;
+    vc.remotePath = @"";
+    [self.navigationController pushViewController:vc animated:YES];
+}
+
+- (void)syncClipboard
+{
+    [self.session sendClipboardText:UIPasteboard.generalPasteboard.string ?: @""];
+    [self ks_showError:@"已发送剪贴板内容" code:@"Clip" hint:@"对端会覆盖自己的剪贴板"];
+}
+
+- (void)disconnect
+{
+    [self.session close];
+    [[KSServer shared].sessions removeObjectForKey:self.peer.deviceId ?: @""];
+    [self.navigationController popViewControllerAnimated:YES];
+}
+
+@end
+
+#pragma mark - 浏览对端文件
+
+@interface KSRemoteFilesViewController () <UITableViewDataSource, UITableViewDelegate>
+@property (nonatomic, strong) UITableView *table;
+@property (nonatomic, strong) NSArray<NSDictionary *> *files;
+@property (nonatomic, strong) NSTimer *poller;
+@property (nonatomic, assign) NSInteger ticks;
+@end
+
+@implementation KSRemoteFilesViewController
+
+- (void)viewDidLoad
+{
+    [super viewDidLoad];
+    self.title = self.remotePath.length ? self.remotePath.lastPathComponent : @"对方文件";
+    self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeNever;
+    self.table = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
+    self.table.backgroundColor = UIColor.clearColor;
+    self.table.dataSource = self;
+    self.table.delegate = self;
+    self.table.rowHeight = 58;
+    self.table.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [self.view addSubview:self.table];
+
+    [self.session requestListingPath:self.remotePath];
+    __weak typeof(self) weakSelf = self;
+    self.ticks = 0;
+    self.poller = [NSTimer scheduledTimerWithTimeInterval:0.3 repeats:YES block:^(NSTimer *t) {
+        [weakSelf poll];
+    }];
+}
+
+- (void)viewWillDisappear:(BOOL)animated
+{
+    [super viewWillDisappear:animated];
+    [self.poller invalidate];
+    self.poller = nil;
+}
+
+- (void)poll
+{
+    self.ticks++;
+    NSArray *listing = self.session.lastListing;
+    if (listing.count || self.ticks > 8) {
+        self.files = listing ?: @[];
+        [self.table reloadData];
+        [self.poller invalidate];
+        self.poller = nil;
+    }
+}
+
+- (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)section
+{
+    return MAX(1, (NSInteger)self.files.count);
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tv cellForRowAtIndexPath:(NSIndexPath *)ip
+{
+    UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle
+                                                   reuseIdentifier:nil];
+    cell.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.06];
+    cell.textLabel.textColor = UIColor.whiteColor;
+    cell.detailTextLabel.textColor = KSThemeTextSecondary();
+    if (self.files.count == 0) {
+        cell.textLabel.text = @"对方没有共享文件";
+        cell.detailTextLabel.text = @"或对方未允许浏览";
+        cell.selectionStyle = UITableViewCellSelectionStyleNone;
+        return cell;
+    }
+    NSDictionary *item = self.files[ip.row];
+    BOOL isDir = [item[@"kind"] isEqualToString:@"dir"];
+    cell.textLabel.text = item[@"name"] ?: @"—";
+    cell.detailTextLabel.text = isDir
+        ? @"文件夹"
+        : KSFormatBytes((unsigned long long)[item[@"size"] unsignedLongLongValue]);
+    cell.imageView.image = [UIImage systemImageNamed:isDir ? @"folder" : @"doc"];
+    cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+    cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+    return cell;
+}
+
+- (void)tableView:(UITableView *)tv didSelectRowAtIndexPath:(NSIndexPath *)ip
+{
+    [tv deselectRowAtIndexPath:ip animated:YES];
+    if (ip.row >= (NSInteger)self.files.count) return;
+    NSDictionary *item = self.files[ip.row];
+    NSString *path = item[@"path"] ?: item[@"name"];
+    if ([item[@"kind"] isEqualToString:@"dir"]) {
+        KSRemoteFilesViewController *vc = [[KSRemoteFilesViewController alloc] init];
+        vc.session = self.session;
+        vc.remotePath = path;
+        [self.navigationController pushViewController:vc animated:YES];
+        return;
+    }
+    [self.session downloadPath:path];
+    [self ks_showError:@"已开始下载" code:@"Get" hint:path];
 }
 
 @end
