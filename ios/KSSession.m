@@ -180,7 +180,7 @@
         useBLE = YES;
     }
     if (useBLE) {
-        id link = [[ble alloc] init];
+        id<KSControlLink> link = [[ble alloc] init];
         self.link = link;
         link.delegate = self;
         if ([link respondsToSelector:NSSelectorFromString(@"startScanning")]) {
@@ -189,7 +189,7 @@
         [[KSLog shared] info:@"会话使用蓝牙控制通道"];
     }
     if (!self.link) {
-        self.link = [[KSWiFiControlLink alloc] initWithHost:self.peer.host
+        self.link = [[KSWifiControlLink alloc] initWithHost:self.peer.host
                                                       port:self.peer.port
                                                      token:KSRandomHex(8)];
         self.link.delegate = self;
