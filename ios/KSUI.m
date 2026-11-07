@@ -354,7 +354,7 @@
 
 - (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)s
 {
-    return @[@2, @4, @2, @(KSConfig.shared.developerUnlocked ? 3 : 2)][s];
+    return [@[@2, @4, @2, @(KSConfig.shared.developerUnlocked ? 3 : 2)][s] integerValue];
 }
 
 - (UITableViewCell *)cellWithTitle:(NSString *)title detail:(NSString *)detail switchOn:(BOOL)on
@@ -602,7 +602,7 @@
 }
 - (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)s
 {
-    return @[@3, @1, @1][s];
+    return [@[@3, @1, @1][s] integerValue];
 }
 
 - (UITableViewCell *)cellWithTitle:(NSString *)t
