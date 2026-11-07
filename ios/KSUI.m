@@ -830,7 +830,7 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls
 
 #pragma mark - 传输任务详情
 
-@interface KSTransferDetailViewController ()
+@interface KSTransferDetailViewController () <UITableViewDataSource, UITableViewDelegate>
 @property (nonatomic, strong) UITableView *table;
 @property (nonatomic, strong) NSTimer *ticker;
 @property (nonatomic, strong) NSArray<NSArray *> *rows;
@@ -1247,7 +1247,7 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls
 
 #pragma mark - 全局搜索
 
-@interface KSSearchViewController : KSViewController <UITableViewDataSource, UITableViewDelegate, UISearchBarDelegate>
+@interface KSSearchViewController () <UITableViewDataSource, UITableViewDelegate, UISearchBarDelegate>
 @property (nonatomic, strong) UISearchBar *searchBar;
 @property (nonatomic, strong) UITableView *table;
 @property (nonatomic, strong) NSArray<NSDictionary *> *results;
