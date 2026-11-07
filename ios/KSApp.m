@@ -126,6 +126,9 @@
 
 
 @implementation KSGlassView
+{
+    UIVisualEffectView *_blur;
+}
 
 + (instancetype)glassView
 {
@@ -255,7 +258,27 @@ static void KSHandleUncaughtException(NSException *exception)
     [text writeToFile:[dir stringByAppendingPathComponent:@"crash.log"]
            atomically:YES encoding:NSUTF8StringEncoding error:NULL];
 }
-@implementation KSAppDelegate
+@interface KSAppDelegate ()\n- (void)reportPreviousCrashIfAny;\n@end\n\n@implementation KSAppDelegate
+
+- (void)reportPreviousCrashIfAny
+{
+    NSString *dir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+    NSString *path = [dir stringByAppendingPathComponent:@"crash.log"];
+    NSString *text = [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:NULL];
+    if (text.length == 0) return;
+    [[KSLog shared] error:@"上次启动发生崩溃：%@", [text substringToIndex:MIN(text.length, 400u)]];
+    [[NSFileManager defaultManager] removeItemAtPath:path error:NULL];
+    __weak typeof(self) weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.2 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        UIAlertController *al = [UIAlertController alertControllerWithTitle:@"上次异常退出"
+                                                                     message:[text substringToIndex:MIN(text.length, 300u)]
+                                                              preferredStyle:UIAlertControllerStyleAlert];
+        [al addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];
+        [weakSelf.window.rootViewController presentViewController:al animated:YES completion:nil];
+    });
+}
+
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions
 {

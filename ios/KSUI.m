@@ -657,16 +657,18 @@
 }
 - (void)tapVersion
 {
+    // 主入口模式下，连点版本号不做任何事、不提示，避免暴露入口
+    if (KSConfig.shared.devGateMode != 1) {
+        self.tapCount = 0;
+        return;
+    }
     self.tapCount++;
     [self.tapTimer invalidate];
     self.tapTimer = [NSTimer scheduledTimerWithTimeInterval:3.0 target:self
                                                    selector:@selector(resetTaps) userInfo:nil repeats:NO];
-    if (self.tapCount >= 8) {
+    if (self.tapCount >= 16) {
         self.tapCount = 0;
         [self promptDeveloperPassword];
-    } else if (self.tapCount >= 4) {
-        NSInteger left = 8 - self.tapCount;
-        [self showToast:[NSString stringWithFormat:@"再点 %ld 次进入开发者模式", (long)left]];
     }
 }
 
