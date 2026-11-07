@@ -1320,16 +1320,19 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls
 - (UITableViewCell *)tableView:(UITableView *)tv cellForRowAtIndexPath:(NSIndexPath *)ip
 {
     if (ip.section == 0) {
-        NSDictionary *rows = @{@0: @[@"设备名称", self.peer.name ?: @"—"],
-                               @1: @[@"类型", [self.peer kindLabel]],
-                               @2: @[@"地址", [NSString stringWithFormat:@"%@:%u",
-                                               self.peer.host ?: @"—", self.peer.port]]}[@(ip.row)];
+        NSArray *rows = @[
+            @[@"设备名称", self.peer.name ?: @"—"],
+            @[@"类型", [self.peer kindLabel]],
+            @[@"地址", [NSString stringWithFormat:@"%@:%u",
+                        self.peer.host ?: @"—", self.peer.port]]
+        ];
+        NSArray *row = rows[ip.row];
         UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1
                                                        reuseIdentifier:nil];
         cell.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.06];
-        cell.textLabel.text = rows[0];
+        cell.textLabel.text = row[0];
         cell.textLabel.textColor = UIColor.whiteColor;
-        cell.detailTextLabel.text = rows[1];
+        cell.detailTextLabel.text = row[1];
         cell.detailTextLabel.textColor = KSThemeTextSecondary();
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
         return cell;
