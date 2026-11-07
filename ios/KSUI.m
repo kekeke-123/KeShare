@@ -457,26 +457,70 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls
 
 - (void)promptSendPath:(NSString *)path
 {
+    [self promptSendPath:path asName:nil];
+}
+
+- (void)promptSendPath:(NSString *)path asName:(NSString *)name
+{
     NSArray<KSSession *> *peers = [self connectedSessions];
     if (peers.count == 0) {
         [self filesToast:@"还没有已连接的设备"];
         return;
     }
-    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"发送到"
+    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:
+                                name.length ? [NSString stringWithFormat:@"发送为「%@」到", name]
+                                             : @"发送到"
                                                                   message:nil
                                                            preferredStyle:UIAlertControllerStyleActionSheet];
     for (KSSession *session in peers) {
         NSString *title = session.peer.name ?: @"未命名设备";
         [sheet addAction:[UIAlertAction actionWithTitle:title style:UIAlertActionStyleDefault
                                                handler:^(UIAlertAction *a) {
-            [session uploadFileAtPath:path];
-            [self filesToast:@"已加入发送队列"];
+            [session uploadFileAtPath:path asName:name];
+            [self filesToast:name.length
+                ? [NSString stringWithFormat:@"已加入发送队列：%@", name]
+                : @"已加入发送队列"];
         }]];
     }
     [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
     sheet.popoverPresentationController.sourceView = self.table;
     [self presentViewController:sheet animated:YES completion:nil];
 }
+
+/// 发送前改对端保存的文件名
+- (void)promptRenameSend:(NSString *)path
+{
+    NSString *original = path.lastPathComponent ?: @"file";
+    UIAlertController *al = [UIAlertController
+        alertControllerWithTitle:@"重命名发送"
+                         message:@"对端会用这个名字保存，原文件不会改名"
+                  preferredStyle:UIAlertControllerStyleAlert];
+    [al addTextFieldWithConfigurationHandler:^(UITextField *tf) {
+        tf.text = original;
+        tf.clearButtonMode = UITextFieldViewModeWhileEditing;
+        tf.autocapitalizationType = UITextAutocapitalizationTypeNone;
+        tf.autocorrectionType = UITextAutocorrectionTypeNo;
+    }];
+    [al addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    __weak typeof(self) weakSelf = self;
+    [al addAction:[UIAlertAction actionWithTitle:@"发送" style:UIAlertActionStyleDefault
+                                         handler:^(UIAlertAction *a) {
+        NSString *raw = al.textFields.firstObject.text ?: @"";
+        NSString *name = [raw stringByTrimmingCharactersInSet:
+                          [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (name.length == 0) {
+            [weakSelf filesToast:@"文件名不能为空"];
+            return;
+        }
+        if ([name containsString:@"/"] || [name containsString:@"\\"]) {
+            [weakSelf filesToast:@"文件名不能包含路径分隔符"];
+            return;
+        }
+        [weakSelf promptSendPath:path asName:name];
+    }]];
+    [self presentViewController:al animated:YES completion:nil];
+}
+
 - (void)filesToast:(NSString *)text
 {
     UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 260, 36)];
@@ -579,6 +623,9 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls
                                                            preferredStyle:UIAlertControllerStyleActionSheet];
     [sheet addAction:[UIAlertAction actionWithTitle:@"发送到…" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
         [self promptSendPath:path];
+    }]];
+    [sheet addAction:[UIAlertAction actionWithTitle:@"重命名发送…" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
+        [self promptRenameSend:path];
     }]];
     [sheet addAction:[UIAlertAction actionWithTitle:@"分享" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
         UIActivityViewController *av = [[UIActivityViewController alloc]

@@ -409,10 +409,24 @@
 
 - (void)uploadFileAtPath:(NSString *)localPath
 {
+    [self uploadFileAtPath:localPath asName:nil];
+}
+
+- (void)uploadFileAtPath:(NSString *)localPath asName:(NSString *)name
+{
+    // 对端保存名可以改，但必须是安全的单层文件名
+    NSString *safeName = [name stringByTrimmingCharactersInSet:
+                          [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (safeName.length == 0) safeName = localPath.lastPathComponent;
+    if (!KSIsValidRelativePath(safeName) || [safeName containsString:@"/"]) {
+        [[KSLog shared] warn:@"上传文件名非法：%@，改用原名", name];
+        safeName = localPath.lastPathComponent;
+    }
+
     NSString *tid = [KSRandomHex(4) lowercaseString];
     KSTransfer *tr = [[KSTransfer alloc] init];
     tr.transferId = tid;
-    tr.fileName = localPath.lastPathComponent;
+    tr.fileName = safeName;
     tr.path = localPath;
     tr.peerName = self.peer.name;
     tr.direction = KSTransferDirectionUpload;
@@ -433,11 +447,11 @@
 
     // host/port 必须带上：对端要用它回连我们的数据端口
     [self.link sendMessage:@{ @"t": @"put_offer", @"token": self.token ?: @"", @"id": tid,
-                              @"name": tr.fileName, @"size": @(tr.total),
+                              @"name": safeName, @"size": @(tr.total),
                               @"did": KSConfig.shared.deviceId ?: @"",
                               @"host": KSIPv4StringLocal(),
                               @"port": @(KSConfig.shared.port) }];
-    [[KSLog shared] info:@"请求上传 %@ (id=%@, %llu 字节)", tr.fileName, tid, tr.total];
+    [[KSLog shared] info:@"请求上传 %@ (id=%@, %llu 字节)", safeName, tid, tr.total];
 }
 
 #pragma mark 暂停 / 继续 / 取消

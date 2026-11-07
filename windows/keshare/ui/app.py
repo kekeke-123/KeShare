@@ -554,8 +554,11 @@ class KeShareApp(HazeUI, glasslib.GlassApp):
     # ------------------------------------------------------------------
     # Haze 页面用的业务入口
     # ------------------------------------------------------------------
-    def _push_path(self, rel_path):
-        """推文件给已连接设备：rel_path 相对「接收目录」，找不到再退共享目录。"""
+    def _push_path(self, rel_path, remote_name=None):
+        """推文件给已连接设备；remote_name 可改对端保存的文件名。
+
+        rel_path 相对「接收目录」，找不到再退共享目录。
+        """
         client = getattr(self, "_client", None)
         if client is None:
             raise RuntimeError("未连接设备")
@@ -575,7 +578,8 @@ class KeShareApp(HazeUI, glasslib.GlassApp):
                 break
         if abs_path is None:
             raise RuntimeError("文件不存在: %s" % (rel_path,))
-        client.push(abs_path, remote_name=os.path.basename(abs_path))
+        name = (remote_name or "").strip() or os.path.basename(abs_path)
+        client.push(abs_path, remote_name=files.safe_filename(name))
 
     def _import_files_and_send(self):
         """选择本地文件 → 复制进接收目录 → 有连接就直接发送。"""

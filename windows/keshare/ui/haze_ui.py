@@ -25,6 +25,7 @@ PAGE_TITLES = {
     "about": "关于",
     "setting_detail": "设置项",
     "transfer_detail": "任务详情",
+    "rename_send": "重命名并发送",
 }
 
 SIDEBAR_ITEMS = [
@@ -398,6 +399,9 @@ class HazeUI(object):
         def send():
             self._haze_push_path(rel)
 
+        def send_as():
+            self.show_haze_page("rename_send", rel)
+
         def copy_path():
             try:
                 from .. import clipboard
@@ -435,21 +439,22 @@ class HazeUI(object):
         items = []
         if not is_dir:
             items.append(("发送到已连接设备", send))
+            items.append(("重命名并发送…", send_as))
         items += [("复制完整路径", copy_path),
                   ("在资源管理器中显示", reveal),
                   "-",
                   ("删除", delete)]
         self._popup_menu(px, py, items)
 
-    def _haze_push_path(self, rel_path):
-        """把共享目录里的文件推给已连接设备；没有连接则提示。"""
+    def _haze_push_path(self, rel_path, remote_name=None):
+        """把文件推给已连接设备；没有连接则提示。"""
         client = getattr(self, "_client", None)
         if client is None or not getattr(client, "connected", lambda: False)():
             self.toast.show("还没有连接设备", "先在「设备」页选一台", "warn")
             return
         try:
-            self._push_path(rel_path)
-            self.toast.show("已发送", rel_path.rsplit("/", 1)[-1], "ok")
+            self._push_path(rel_path, remote_name=remote_name)
+            self.toast.show("已发送", (remote_name or rel_path).rsplit("/", 1)[-1], "ok")
         except Exception as exc:
             self.toast.show("发送失败", str(exc), "error")
 
@@ -781,6 +786,64 @@ class HazeUI(object):
             self.config_obj.save()
         except Exception as exc:
             self.toast.show("保存到磁盘失败", str(exc), "error")
+
+    # ---------------------------------------------------------------- 重命名并发送
+    def _page_rename_send(self):
+        """发送前改对端看到的文件名。"""
+        import os as _os
+        rel = (self._page_param or "").lstrip("/")
+        original = _os.path.basename(rel) or "file.bin"
+        x, y, w, h = self._content_rect()
+
+        widgets = [G.GlassPanel(self, (x, y, w, 102), radius=28, solid_alpha=200)]
+        widgets.append(G.GlassLabel(self, (x + 26, y + 22, w - 260, 32),
+                                    "重命名并发送", 21, G.GlassTheme.fg, True))
+        widgets.append(G.GlassButton(self, (x + w - 130, y + 30, 108, 42), "返回",
+                                     lambda: self.show_haze_page("files")))
+
+        panel_top = y + 126
+        widgets.append(G.GlassPanel(self, (x, panel_top, w, 236), radius=28, solid_alpha=210))
+        widgets.append(G.GlassLabel(self, (x + 26, panel_top + 20, w - 52, 22),
+                                    "原文件：%s" % original, 11, G.GlassTheme.muted))
+        widgets.append(G.GlassLabel(self, (x + 26, panel_top + 46, w - 52, 20),
+                                    "对端会用下面这个名字保存（扩展名建议保留）", 10,
+                                    G.GlassTheme.muted))
+
+        inp = G.GlassInput(self, (x + 26, panel_top + 74, min(460, w - 52), 40),
+                           value=original, placeholder="新的文件名")
+        widgets.append(inp)
+
+        def do_send():
+            new_name = (inp.text() or "").strip()
+            if not new_name:
+                self.toast.show("文件名不能为空", "", "error")
+                return
+            if "/" in new_name or "\\" in new_name or new_name in (".", ".."):
+                self.toast.show("文件名非法", "不要包含路径分隔符", "error")
+                return
+            try:
+                self._haze_push_path(rel, remote_name=new_name)
+                self.toast.show("已发送", new_name, "ok")
+                self.show_haze_page("files")
+            except Exception as exc:
+                self.toast.show("发送失败", str(exc), "error")
+
+        def keep_original():
+            try:
+                self._haze_push_path(rel)
+                self.toast.show("已发送", original, "ok")
+                self.show_haze_page("files")
+            except Exception as exc:
+                self.toast.show("发送失败", str(exc), "error")
+
+        widgets.append(G.GlassButton(self, (x + 26, panel_top + 132, 132, 44),
+                                     "用新名字发送", do_send, accent=True))
+        widgets.append(G.GlassButton(self, (x + 172, panel_top + 132, 132, 44),
+                                     "保持原名", keep_original))
+        widgets.append(G.GlassLabel(self, (x + 26, panel_top + 190, w - 52, 20),
+                                    "原文件不会被改名，只是对端保存时用新名字", 10,
+                                    G.GlassTheme.muted))
+        return widgets
 
     # ---------------------------------------------------------------- 传输详情页
     def _page_transfer_detail(self):

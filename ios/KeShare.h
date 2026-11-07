@@ -218,6 +218,8 @@ typedef NS_ENUM(NSInteger, KSTransferState) {
 - (void)requestListingPath:(NSString *)path;
 - (void)downloadPath:(NSString *)path;
 - (void)uploadFileAtPath:(NSString *)localPath;
+/// 上传并指定对端保存的文件名（nil / 空串 = 用原名）
+- (void)uploadFileAtPath:(NSString *)localPath asName:(nullable NSString *)name;
 - (void)sendClipboardText:(NSString *)text;
 /// 暂停 / 继续 / 取消某个传输（转发到 KSTransferCenter）
 - (BOOL)pauseTransferWithId:(NSString *)transferId;
