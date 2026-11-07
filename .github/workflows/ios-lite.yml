@@ -54,11 +54,11 @@ jobs:
           git init -q repo && cd repo
           git config user.name "KeShare CI"
           git config user.email "ci@keshare.local"
-          git checkout -q -b artifacts
+          git checkout -q -b artifacts-lite
           cp ../KeShare-Lite.ipa ./KeShare-Lite.ipa
           git add KeShare-Lite.ipa
           git commit -q -m "Lite IPA build ${{ github.run_number }}"
-          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" artifacts
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" artifacts-lite
 
       - name: 失败时归档日志
         if: failure()
