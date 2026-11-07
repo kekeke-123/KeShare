@@ -294,11 +294,22 @@ class Transfer(object):
             pass
 
     def to_dict(self):
+        if self.error:
+            state = "失败"
+        elif self.done:
+            state = "完成"
+        elif self.paused:
+            state = "暂停"
+        elif self.received:
+            state = "进行中"
+        else:
+            state = "等待"
         return {
             "id": self.tid, "name": self.name, "size": self.size,
             "received": self.received, "digest": self.digest,
             "error": self.error, "path": self.path, "part": self.part,
             "direction": self.direction, "kind": self.kind, "done": self.done,
+            "paused": bool(self.paused), "state": state,
         }
 
 

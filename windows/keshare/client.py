@@ -235,6 +235,10 @@ class KSClient(object):
         transfer_id = crypto.rand_hex(4)               # 8 hex chars
         started = time.time()
         deadline = started + float(timeout or 900.0)
+        # 登记到注册表：暂停/取消与任务详情页都要靠它（原来这里没有 transfer，
+        # 下面 pause_event 引用了不存在的变量，下载必然抛 NameError）
+        transfer = self.registry.register(transfer_id, session.token, name, "in",
+                                          dest_path, 0, kind="get")
         self._transfer_event("start", id=transfer_id, name=name, size=0,
                              direction="in", peer=session.name, dest=dest_path)
         sock = None
@@ -246,6 +250,8 @@ class KSClient(object):
                                     response.get("err") or "denied")
             size = int(response.get("size") or 0)
             remote_name = response.get("name") or name
+            transfer.size = size
+            transfer.name = remote_name
             self._transfer_event("start", id=transfer_id, name=remote_name,
                                  size=size, direction="in", peer=session.name,
                                  dest=dest_path)
@@ -261,7 +267,7 @@ class KSClient(object):
                                         progress=progress,
                                         timeout=max(60.0, deadline - time.time()),
                                         max_bytes=size or None,
-                                        pause_event=getattr(transfer, "pause_event", None))
+                                        pause_event=transfer.pause_event)
             try:
                 sock.close()
             except OSError:
@@ -280,6 +286,7 @@ class KSClient(object):
                 raise KSClientError("SHA-256 校验失败", "checksum")
             os.replace(part, dest_path)
             session.send(protocol.hash_resp_message(transfer_id, True))
+            transfer.finish(digest=actual, received=result["size"])
             elapsed = max(0.001, time.time() - started)
             self._transfer_event("done", id=transfer_id, name=remote_name,
                                  direction="in", size=result["size"],
@@ -299,6 +306,7 @@ class KSClient(object):
             except OSError:
                 pass
             err = getattr(exc, "err", "io")
+            transfer.finish(error=err)
             self._transfer_event("error", id=transfer_id, name=name,
                                  direction="in", err=err)
             if self.log is not None:
