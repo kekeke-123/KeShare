@@ -6,6 +6,12 @@
 #import "KeShare.h"
 #import "KSInternal.h"
 
+// 底部微弹窗（实现在文件末尾的 KSErrorToast 分类中）
+@interface UIViewController (KSErrorToast)
+- (void)ks_showError:(NSString *)message code:(NSString *)code hint:(NSString *)hint;
+@end
+
+
 #pragma mark - 设备列表
 
 @interface KSDevicesViewController () <UITableViewDataSource, UITableViewDelegate, KSSessionDelegate>
