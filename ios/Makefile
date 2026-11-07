@@ -80,7 +80,7 @@ $(EXT_DIR)/$(EXT): Widget/KeShareActivityAttributes.swift Widget/KeShareWidgetBu
 	$(SWIFTC) $(SWIFTFLAGS) \
 		-module-name $(EXT) \
 		-framework WidgetKit -framework SwiftUI -framework ActivityKit \
-		$(EXT_DIR)/$(EXT) \
+		-o $(EXT_DIR)/$(EXT) \
 		Widget/KeShareActivityAttributes.swift Widget/KeShareWidgetBundle.swift
 	@cp Widget/Info.plist $(EXT_DIR)/Info.plist
 	@plutil -replace CFBundleShortVersionString -string "$(VERSION)" $(EXT_DIR)/Info.plist

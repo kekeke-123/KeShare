@@ -1,7 +1,7 @@
 name: iOS (arm64)
 
 permissions:
-  contents: read
+  contents: write
   issues: write
 
 on:
@@ -64,6 +64,20 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
 
+      # 成功后把 IPA 推到 artifacts 分支，方便没有凭据的一端直接取用
+      - name: 推送 IPA 到 artifacts 分支
+        if: success()
+        run: |
+          cp ios/build/KeShare.ipa "$RUNNER_TEMP/KeShare.ipa"
+          cd "$RUNNER_TEMP"
+          rm -rf pub && mkdir pub && cd pub
+          git init -q
+          git config user.name  "KeShare CI"
+          git config user.email "ci@keshare.local"
+          cp ../KeShare.ipa .
+          git add KeShare.ipa
+          git commit -qm "IPA build ${GITHUB_RUN_NUMBER} (${GITHUB_SHA:0:7})"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" HEAD:artifacts
       # 失败时把编译日志写进 Issue（公开可读，方便排查）
       - name: 失败时归档构建日志
         if: failure()
