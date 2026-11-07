@@ -15,7 +15,7 @@ import time
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
-from .. import KSAPP_NAME, KSAPP_VERSION
+from .. import KSAPP_DISPLAY, KSAPP_NAME
 from .. import clipboard, files, protocol
 from ..client import KSClient
 from .theme import font as theme_font
@@ -66,7 +66,7 @@ class KeShareApp(tk.Tk):
         self._remote_browser = None
         self.palette = DARK if config.theme == "dark" else LIGHT
 
-        self.title("%s %s" % (KSAPP_NAME, KSAPP_VERSION))
+        self.title("%s %s" % (KSAPP_NAME, KSAPP_DISPLAY))
         self.geometry("1000x660")
         self.minsize(880, 560)
         self.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -88,7 +88,7 @@ class KeShareApp(tk.Tk):
                 self.iconify()
             except Exception:
                 pass
-        self.log.info("%s %s 界面已就绪（%s）" % (KSAPP_NAME, KSAPP_VERSION, config.path))
+        self.log.info("%s %s 界面已就绪（%s）" % (KSAPP_NAME, KSAPP_DISPLAY, config.path))
 
     # ------------------------------------------------------------------
     # theming / layout
@@ -146,7 +146,7 @@ class KeShareApp(tk.Tk):
         left = ttk.Frame(header, style="Header.TFrame")
         left.pack(side="left", fill="y")
         ttk.Label(left, text="KeShare", style="Title.TLabel").pack(anchor="w")
-        ttk.Label(left, text="局域网文件互传  ·  %s" % (KSAPP_VERSION,),
+        ttk.Label(left, text="局域网文件互传  ·  %s" % (KSAPP_DISPLAY,),
                   style="Sub.TLabel").pack(anchor="w")
 
         right = ttk.Frame(header, style="Header.TFrame")

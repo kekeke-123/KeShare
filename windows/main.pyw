@@ -34,9 +34,9 @@ def main(argv=None):
     _bootstrap()
     args = list(sys.argv[1:] if argv is None else argv)
 
-    from keshare import KSAPP_NAME, KSAPP_VERSION
+    from keshare import KSAPP_DISPLAY, KSAPP_NAME
     if "--version" in args or "-V" in args:
-        sys.stdout.write("%s %s\n" % (KSAPP_NAME, KSAPP_VERSION))
+        sys.stdout.write("%s %s\n" % (KSAPP_NAME, KSAPP_DISPLAY))
         return 0
 
     from keshare import config as ksconfig
