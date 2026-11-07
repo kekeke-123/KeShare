@@ -196,7 +196,9 @@
             [[KSLog shared] error:@"接收 %@ 失败: %@", tid, error];
         } else {
             if (pub) pub.state = KSTransferStateVerifying;
-            [[KSLog shared] info:@"接收 %@ 数据完成，等待哈希", tid];
+            // hash 校验靠 pt.tempPath 找文件（见 handleHashMessage:）
+            if (tempPath.length) pt.tempPath = tempPath;
+            [[KSLog shared] info:@"接收 %@ 数据完成 %@，等待哈希", tid, tempPath.lastPathComponent];
         }
         dispatch_async(dispatch_get_main_queue(), ^{
             if (pub) {

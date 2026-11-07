@@ -377,10 +377,17 @@ def get_resp_message(transfer_id, ok, size=0, name="", err=None):
     return msg
 
 
-def put_offer_message(transfer_id, name, size, host=None, port=None):
-    """推送请求。带上本机 host/port，接收方才知道该连回哪里（协议 §4.0）。"""
+def put_offer_message(transfer_id, name, size, host=None, port=None, token=None):
+    """推送请求。
+
+    必须带 ``token``：接收方要用它去建立 DATA 连接，没有 token 就认不出
+    这条数据通道属于哪个会话（PROTOCOL.md §2）。
+    同时带本机 ``host``/``port``，接收方才知道该连回哪里（§4.0）。
+    """
     msg = {"t": M_PUT_OFFER, "id": str(transfer_id), "name": str(name),
            "size": int(size or 0)}
+    if token:
+        msg["token"] = str(token)
     if host:
         msg["host"] = str(host)
     if port:

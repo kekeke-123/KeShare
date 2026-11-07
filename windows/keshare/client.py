@@ -335,7 +335,8 @@ class KSClient(object):
             session.send(protocol.put_offer_message(
                 transfer_id, name, size,
                 host=protocol.local_ip(),
-                port=self.local_port))
+                port=self.local_port,
+                token=session.token))
             response = self._recv_until((protocol.M_PUT_RESP,), deadline)
             if not response.get("ok"):
                 raise KSClientError(response.get("err") or "对端拒绝接收",
