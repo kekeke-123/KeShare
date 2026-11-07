@@ -616,6 +616,7 @@
 - (void)onKernelLongPress:(UILongPressGestureRecognizer *)g
 {
     if (g.state != UIGestureRecognizerStateBegan) return;
+    if (KSConfig.shared.developerLocked) return;    // 已永久锁定
     if (KSConfig.shared.devGateMode != 0) return;   // 密码输错后主入口失效
     UIImpactFeedbackGenerator *h = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
     [h impactOccurred];
@@ -668,6 +669,8 @@
                           preferredStyle:UIAlertControllerStyleAlert];
             [err addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];
             [weakSelf presentViewController:err animated:YES completion:nil];
+            KSConfig.shared.developerLocked = YES;
+            [KSConfig.shared save];
             return;
         }
         // 主入口密码错误：入口切换为「连点版本号 16 次」，且不提示任何信息
@@ -681,6 +684,10 @@
 - (void)tapVersion
 {
     // 主入口模式下，连点版本号不做任何事、不提示，避免暴露入口
+    if (KSConfig.shared.developerLocked) {
+        self.tapCount = 0;
+        return;                          // 永久锁定后连点无反应
+    }
     if (KSConfig.shared.devGateMode != 1) {
         self.tapCount = 0;
         return;

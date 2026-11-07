@@ -109,6 +109,7 @@ typedef NS_ENUM(NSInteger, KSTransferState) {
 @property (nonatomic, assign) BOOL autoAcceptPairing;
 @property (nonatomic, copy) NSString *discoveryMode;    // both / ble / wifi / off
 @property (nonatomic, copy) NSString *theme;            // dark / light / auto
+@property (nonatomic, assign) BOOL developerLocked;          // 错误后永久锁死开发者模式
 @property (nonatomic, assign) NSInteger devGateMode;      // 0=长按内核版本10秒 1=连点版本号16次
 @property (nonatomic, assign) BOOL autoConnect;              // 自动连接历史设备
 @property (nonatomic, assign) BOOL developerUnlocked;

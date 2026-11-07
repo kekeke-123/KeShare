@@ -109,9 +109,13 @@ NSString *KSHashOfData(NSData *data)
 
 - (NSURL *)configFileURL
 {
-    NSURL *docs = [[NSFileManager defaultManager] URLsForDirectory:NSDocumentDirectory
-                                                         inDomains:NSUserDomainMask].firstObject;
-    return [docs URLByAppendingPathComponent:@"settings.json"];
+    // 放在 Application Support：不会被“文件”App 看到
+    NSURL *base = [[[NSFileManager defaultManager] URLsForDirectory:NSApplicationSupportDirectory
+                                                          inDomains:NSUserDomainMask] firstObject];
+    NSURL *dir = [base URLByAppendingPathComponent:@"KeShare" isDirectory:YES];
+    [[NSFileManager defaultManager] createDirectoryAtURL:dir
+                             withIntermediateDirectories:YES attributes:nil error:NULL];
+    return [dir URLByAppendingPathComponent:@"settings.json"];
 }
 
 - (NSString *)configFilePath { return self.configFileURL.path; }
@@ -250,6 +254,9 @@ static void mergeDefaults(NSMutableDictionary *dst, NSDictionary *def)
 - (void)setDiscoveryMode:(NSString *)v { [self setValue:v forPath:@"network.discovery"]; }
 - (NSString *)theme { return [self valueForPath:@"ui.theme"]; }
 - (void)setTheme:(NSString *)v { [self setValue:v forPath:@"ui.theme"]; }
+- (BOOL)developerLocked { return [[self valueForPath:@"developer.locked"] boolValue]; }
+- (void)setDeveloperLocked:(BOOL)v { [self setValue:@(v) forPath:@"developer.locked"]; }
+
 - (NSInteger)devGateMode { return [[self valueForPath:@"developer.gate_mode"] integerValue]; }
 - (void)setDevGateMode:(NSInteger)mode { [self setValue:@(mode) forPath:@"developer.gate_mode"]; }
 
@@ -308,7 +315,13 @@ static void mergeDefaults(NSMutableDictionary *dst, NSDictionary *def)
 
 - (NSString *)receivePath
 {
-    return [self.shareRoot stringByAppendingPathComponent:self.receiveDirName];
+    // 对外可见的只有「接收的数据」这一个目录
+    NSURL *docs = [[[NSFileManager defaultManager] URLsForDirectory:NSDocumentDirectory
+                                                          inDomains:NSUserDomainMask] firstObject];
+    NSString *dir = [[docs URLByAppendingPathComponent:@"接收的数据" isDirectory:YES] path];
+    [[NSFileManager defaultManager] createDirectoryAtPath:dir
+                              withIntermediateDirectories:YES attributes:nil error:NULL];
+    return dir;
 }
 
 - (uint32_t)caps
