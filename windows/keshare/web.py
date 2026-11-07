@@ -157,16 +157,18 @@ def _parse_range(value, total):
 # ---------------------------------------------------------------------------
 # 响应
 # ---------------------------------------------------------------------------
-def _send(sock, code, ctype, body, extra_headers=None, head_only=False):
+def _send(sock, code, ctype, body, extra_headers=None, head_only=False,
+          content_length=None):
     reason = {
         200: "OK", 206: "Partial Content", 400: "Bad Request", 403: "Forbidden",
         404: "Not Found", 405: "Method Not Allowed", 413: "Payload Too Large",
         500: "Internal Server Error",
     }.get(code, "OK")
+    length = len(body) if content_length is None else int(content_length)
     lines = [
         "HTTP/1.1 %d %s" % (code, reason),
         "Content-Type: %s" % (ctype,),
-        "Content-Length: %d" % (len(body),),
+        "Content-Length: %d" % (length,),
         "Access-Control-Allow-Origin: *",
         "Access-Control-Allow-Methods: GET, PUT, HEAD, OPTIONS",
         "Access-Control-Allow-Headers: Content-Type, Range",
@@ -174,6 +176,8 @@ def _send(sock, code, ctype, body, extra_headers=None, head_only=False):
         "Connection: close",
     ]
     for key, value in (extra_headers or {}).items():
+        if key.lower() == "content-length":
+            continue                    # 已经有 Content-Length，不能发两个
         lines.append("%s: %s" % (key, value))
     raw = ("\r\n".join(lines) + "\r\n\r\n").encode("iso-8859-1")
     sock.sendall(raw)
@@ -181,18 +185,30 @@ def _send(sock, code, ctype, body, extra_headers=None, head_only=False):
         sock.sendall(body)
 
 
-def _stream_file(sock, path, start, end, total):
+def _stream_file(sock, path, start, end, total, partial=True):
+    """把文件从 start 到 end 写给客户端；partial=True 用 206，否则用 200。"""
     length = end - start + 1
-    header = (
-        "HTTP/1.1 206 Partial Content\r\n"
-        "Content-Type: application/octet-stream\r\n"
-        "Content-Length: %d\r\n"
-        "Content-Range: bytes %d-%d/%d\r\n"
-        "Accept-Ranges: bytes\r\n"
-        "Access-Control-Allow-Origin: *\r\n"
-        "Connection: close\r\n\r\n"
-        % (length, start, end, total)
-    )
+    if partial:
+        header = (
+            "HTTP/1.1 206 Partial Content\r\n"
+            "Content-Type: application/octet-stream\r\n"
+            "Content-Length: %d\r\n"
+            "Content-Range: bytes %d-%d/%d\r\n"
+            "Accept-Ranges: bytes\r\n"
+            "Access-Control-Allow-Origin: *\r\n"
+            "Connection: close\r\n\r\n"
+            % (length, start, end, total)
+        )
+    else:
+        header = (
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: application/octet-stream\r\n"
+            "Content-Length: %d\r\n"
+            "Accept-Ranges: bytes\r\n"
+            "Access-Control-Allow-Origin: *\r\n"
+            "Connection: close\r\n\r\n"
+            % (length,)
+        )
     sock.sendall(header.encode("iso-8859-1"))
     remaining = length
     with open(path, "rb") as handle:
@@ -287,16 +303,18 @@ drop.addEventListener('drop',e=>upload(e.dataTransfer.files));
 
 
 def _render_page(name, version, entries, rel):
+    from urllib.parse import quote
     rows = []
     if rel:
         parent = rel.rsplit("/", 1)[0] if "/" in rel else ""
-        rows.append('<li><a href="/?d=%s">← 上一级</a></li>' % html.escape(parent, quote=True))
+        rows.append('<li><a href="/?d=%s">← 上一级</a></li>'
+                    % quote(parent, safe="/"))
     for entry in entries:
         label = html.escape(entry["name"])
-        href = "/f/" + html.escape(entry["path"], quote=True)
+        href = "/f/" + quote(entry["path"], safe="/")
         if entry["kind"] == "dir":
             rows.append('<li>📁 <a href="/?d=%s">%s</a></li>'
-                        % (html.escape(entry["path"], quote=True), label))
+                        % (quote(entry["path"], safe="/"), label))
         else:
             rows.append('<li>📄 <a href="%s" download>%s</a>'
                         ' <small>%s</small></li>'
@@ -402,17 +420,21 @@ def serve_http(sock, first, addr, config, log, emit=None):
                 total = os.path.getsize(target_path)
                 rng = _parse_range(headers.get("range"), total)
                 if method == "HEAD":
-                    _send(sock, 200, "application/octet-stream", b"", {
-                        "Content-Length": str(total),
-                        "Accept-Ranges": "bytes",
-                    }, head_only=True)
+                    _send(sock, 200, "application/octet-stream", b"",
+                          {"Accept-Ranges": "bytes"}, head_only=True,
+                          content_length=total)
+                    return
+                if total == 0:
+                    _send(sock, 200, "application/octet-stream", b"",
+                          {"Accept-Ranges": "bytes"})
+                    log.info("HTTP 下载 %s（空文件）-> %s" % (rel, peer_ip))
                     return
                 if rng is not None:
-                    _stream_file(sock, target_path, rng[0], rng[1], total)
+                    _stream_file(sock, target_path, rng[0], rng[1], total, partial=True)
                     log.info("HTTP 下载（Range %d-%d/%d）%s <- %s"
                              % (rng[0], rng[1], total, rel, peer_ip))
                     return
-                _stream_file(sock, target_path, 0, max(0, total - 1), total)
+                _stream_file(sock, target_path, 0, max(0, total - 1), total, partial=False)
                 log.info("HTTP 下载 %s（%d 字节）-> %s" % (rel, total, peer_ip))
                 if emit:
                     emit("transfer", {"state": "done", "direction": "out",
@@ -437,7 +459,30 @@ def serve_http(sock, first, addr, config, log, emit=None):
             pass
 
 
+def _drain_body(sock, headers, rest, limit=64 * 1024 * 1024):
+    """拒绝请求前把 body 读掉，否则客户端会收到 RST 而不是我们写的错误响应。"""
+    try:
+        length = int(headers.get("content-length") or 0)
+    except (TypeError, ValueError):
+        length = 0
+    if length <= 0 or length > limit:
+        return
+    got = len(rest or b"")
+    while got < length:
+        try:
+            block = sock.recv(min(65536, length - got))
+        except OSError:
+            return
+        if not block:
+            return
+        got += len(block)
+
+
 def _handle_put(sock, rel, headers, config, log, emit, peer_ip, rest):
+    if not getattr(config, "allow_upload", True):
+        _drain_body(sock, headers, rest)
+        _send(sock, 403, "application/json", b'{"ok":false,"err":"denied"}')
+        return
     length_text = headers.get("content-length")
     if length_text is None:
         _send(sock, 400, "text/plain", b"Content-Length required")
@@ -448,6 +493,7 @@ def _handle_put(sock, rel, headers, config, log, emit, peer_ip, rest):
         _send(sock, 400, "text/plain", b"bad Content-Length")
         return
     if length < 0 or length > int(getattr(config, "max_file_bytes", 2 * 1024 ** 3)):
+        _drain_body(sock, headers, rest)
         _send(sock, 413, "application/json", b'{"ok":false,"err":"too_large"}')
         return
 
@@ -606,6 +652,10 @@ def _serve_ws(sock, headers, config, log, emit, peer_ip, rest):
         while True:
             opcode, payload = _ws_recv(sock)
             if opcode == 0x8:
+                try:
+                    _ws_send(sock, 0x8, payload[:2])   # RFC6455：收到 close 要回 close
+                except OSError:
+                    pass
                 break
             if opcode == 0x2:
                 if not outstanding:
@@ -653,6 +703,9 @@ def _serve_ws(sock, headers, config, log, emit, peer_ip, rest):
             elif kind == "get":
                 _ws_get(sock, message, config, log, emit)
             elif kind == "put":
+                if not getattr(config, "allow_upload", True):
+                    _ws_send_text(sock, {"t": "err", "err": "denied"})
+                    continue
                 name = files.safe_filename(str(message.get("name") or "upload.bin"))
                 size = int(message.get("size") or 0)
                 if size < 0 or size > int(getattr(config, "max_file_bytes", 2 ** 31)):

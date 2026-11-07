@@ -218,12 +218,20 @@ static NSArray<NSDictionary *> *KSWebListDir(NSString *dir, NSString *rel)
 
 #pragma mark - 下载 / Range
 
-static BOOL KSWebStreamFile(int fd, NSString *path, long long start, long long end, long long total)
+static BOOL KSWebStreamFile(int fd, NSString *path, long long start, long long end,
+                            long long total, BOOL partial)
 {
-    NSString *range = [NSString stringWithFormat:@"Content-Range: bytes %lld-%lld/%lld", start, end, total];
-    KSWebSendHeader(fd, 206, @"Partial Content", @"application/octet-stream",
-                    end - start + 1,
-                    @[@"Accept-Ranges: bytes", range]);
+    if (partial) {
+        NSString *range = [NSString stringWithFormat:@"Content-Range: bytes %lld-%lld/%lld",
+                           start, end, total];
+        KSWebSendHeader(fd, 206, @"Partial Content", @"application/octet-stream",
+                        end - start + 1,
+                        @[@"Accept-Ranges: bytes", range]);
+    } else {
+        KSWebSendHeader(fd, 200, @"OK", @"application/octet-stream",
+                        end - start + 1,
+                        @[@"Accept-Ranges: bytes"]);
+    }
     int file = open(path.fileSystemRepresentation, O_RDONLY);
     if (file < 0) return NO;
     lseek(file, start, SEEK_SET);
@@ -395,7 +403,36 @@ static void KSWSHandleGet(int fd, NSDictionary *message)
     [[KSLog shared] info:@"WS 下载 %@（%llu 字节）", rel, total - offset];
 }
 
+/// 拒绝请求前读掉 body，否则客户端收到的是 RST 而不是我们写的错误响应
+static void KSWebDrainBody(int fd, NSDictionary<NSString *, NSString *> *headers, NSData *rest)
+{
+    long long length = [headers[@"content-length"] longLongValue];
+    if (length <= 0 || length > 64LL * 1024 * 1024) return;
+    long long got = rest.length;
+    uint8_t buf[4096];
+    while (got < length) {
+        ssize_t n = read(fd, buf, (size_t)MIN(sizeof buf, (size_t)(length - got)));
+        if (n <= 0) return;
+        got += n;
+    }
+}
+
 #pragma mark - 主入口
+
+/// 只允许私有网段/回环/链路本地访问，避免被公网扫到
+static BOOL KSWebIsPrivateAddress(NSString *ip)
+{
+    if (!ip.length) return YES;                 // 拿不到来源 IP 时不拦（蓝牙/USB 隧道）
+    NSArray<NSString *> *parts = [ip componentsSeparatedByString:@"."];
+    if (parts.count != 4) return NO;
+    NSInteger a = [parts[0] integerValue];
+    NSInteger b = [parts[1] integerValue];
+    if (a == 10 || a == 127) return YES;
+    if (a == 192 && b == 168) return YES;
+    if (a == 172 && b >= 16 && b <= 31) return YES;
+    if (a == 169 && b == 254) return YES;
+    return NO;
+}
 
 BOOL KSWebLooksLikeHTTP(NSString *firstLine)
 {
@@ -437,6 +474,11 @@ void KSWebServe(int fd, NSString *firstLine, NSString *peerIp, void (^emit)(NSDi
 
     if (!KSConfig.shared.webAccess) {
         KSWebSendText(fd, 403, @"text/plain; charset=utf-8", @"局域网网页传输已在设置里关闭");
+        return;
+    }
+    if (!KSWebIsPrivateAddress(peerIp)) {
+        KSWebSendText(fd, 403, @"text/plain; charset=utf-8", @"KeShare 只允许局域网访问");
+        [[KSLog shared] warn:@"拒绝公网地址访问网页通道: %@", peerIp];
         return;
     }
 
@@ -488,7 +530,11 @@ void KSWebServe(int fd, NSString *firstLine, NSString *peerIp, void (^emit)(NSDi
         while (YES) {
             @autoreleasepool {
                 int opcode = KSWSRecv(fd, payload);
-                if (opcode < 0 || opcode == 0x8) break;
+                if (opcode < 0) break;
+                if (opcode == 0x8) {
+                    KSWSFrame(fd, 0x8, payload.bytes, MIN(payload.length, (NSUInteger)2));
+                    break;
+                }
                 if (opcode == 0x2) {
                     NSString *tid = pending.allKeys.firstObject;
                     if (!tid) {
@@ -544,6 +590,10 @@ void KSWebServe(int fd, NSString *firstLine, NSString *peerIp, void (^emit)(NSDi
                 } else if ([kind isEqualToString:@"get"]) {
                     KSWSHandleGet(fd, message);
                 } else if ([kind isEqualToString:@"put"]) {
+                    if (!KSConfig.shared.allowUpload) {
+                        KSWSJSON(fd, @{@"t": @"err", @"err": @"denied"});
+                        continue;
+                    }
                     NSString *name = message[@"name"] ?: @"upload.bin";
                     if (!KSIsValidRelativePath(name)) {
                         KSWSJSON(fd, @{@"t": @"err", @"err": @"denied"});
@@ -632,19 +682,25 @@ void KSWebServe(int fd, NSString *firstLine, NSString *peerIp, void (^emit)(NSDi
             long long total = (long long)KSFileSize(targetPath);
             if ([method isEqualToString:@"HEAD"]) {
                 KSWebSendHeader(fd, 200, @"OK", @"application/octet-stream", total,
-                                @[@"Accept-Ranges: bytes", @"Content-Length: 0"]);
+                                @[@"Accept-Ranges: bytes"]);
+                return;
+            }
+            if (total == 0) {
+                KSWebSendHeader(fd, 200, @"OK", @"application/octet-stream", 0,
+                                @[@"Accept-Ranges: bytes"]);
                 return;
             }
             long long start = 0, end = total - 1;
             if (KSWebParseRange(headers[@"range"], total, &start, &end)) {
-                KSWebStreamFile(fd, targetPath, start, end, total);
+                KSWebStreamFile(fd, targetPath, start, end, total, YES);
                 [[KSLog shared] info:@"HTTP 下载（Range %lld-%lld/%lld）%@", start, end, total, rel];
             } else {
                 if (total == 0) {
-                    KSWebSendHeader(fd, 200, @"OK", @"application/octet-stream", 0, nil);
+                    KSWebSendHeader(fd, 200, @"OK", @"application/octet-stream", 0,
+                                    @[@"Accept-Ranges: bytes"]);
                     return;
                 }
-                KSWebStreamFile(fd, targetPath, 0, total - 1, total);
+                KSWebStreamFile(fd, targetPath, 0, total - 1, total, NO);
                 [[KSLog shared] info:@"HTTP 下载 %@（%lld 字节）", rel, total];
             }
             if (emit) emit(@{@"state": @"done", @"direction": @"out",
@@ -654,9 +710,15 @@ void KSWebServe(int fd, NSString *firstLine, NSString *peerIp, void (^emit)(NSDi
         }
 
         if ([method isEqualToString:@"PUT"]) {
+            if (!KSConfig.shared.allowUpload) {
+                KSWebDrainBody(fd, headers, rest);
+                KSWebSendJSON(fd, 403, @{@"ok": @NO, @"err": @"denied"});
+                return;
+            }
             NSString *lengthText = headers[@"content-length"];
             long long length = [lengthText longLongValue];
             if (length < 0 || length > (long long)KSConfig.shared.maxFileMB * 1024LL * 1024LL) {
+                KSWebDrainBody(fd, headers, rest);
                 KSWebSendJSON(fd, 413, @{@"ok": @NO, @"err": @"too_large"});
                 return;
             }

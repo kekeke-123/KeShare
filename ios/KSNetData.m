@@ -69,6 +69,8 @@
 @property (nonatomic, strong) NSNetService *netService;
 /// 服务端握手（TCP 接入的 hello，在读线程里同步回包）
 - (void)handleServerHello:(NSDictionary *)message link:(KSTcpServerLink *)link;
+/// 处理一条接入的连接（remoteIp 用于网页通道的网段校验与界面显示）
+- (void)handleConnection:(int)cfd from:(NSString *)remoteIp;
 /// 网页/WebSocket 传完一个文件后补一条传输记录，让「传输任务」页看得到
 - (void)postWebTransferEvent:(NSDictionary *)info;
 @end
@@ -199,7 +201,12 @@
             socklen_t len = sizeof peer;
             int cfd = accept(self.listenFd, (struct sockaddr *)&peer, &len);
             if (cfd < 0) break;
-            dispatch_async(self.netQ, ^{ [self handleConnection:cfd]; });
+            char ipbuf[INET_ADDRSTRLEN] = {0};
+            inet_ntop(AF_INET, &peer.sin_addr, ipbuf, sizeof ipbuf);
+            NSString *peerIp = [NSString stringWithUTF8String:ipbuf] ?: @"";
+            dispatch_async(self.netQ, ^{
+                [self handleConnection:cfd from:peerIp];
+            });
         }
     });
 }
@@ -287,7 +294,7 @@
 
 #pragma mark 数据连接处理
 
-- (void)handleConnection:(int)cfd
+- (void)handleConnection:(int)cfd from:(NSString *)remoteIp
 {
     @autoreleasepool {
         struct timeval tv = { 30, 0 };
@@ -309,12 +316,13 @@
         if (KSWebLooksLikeHTTP(header)) {
             [[KSLog shared] info:@"局域网 HTTP 通道接入"];
             __weak typeof(self) weakSelf = self;
-            KSWebServe(cfd, header, @"", ^(NSDictionary *info) {
+            KSWebServe(cfd, header, remoteIp, ^(NSDictionary *info) {
                 dispatch_async(dispatch_get_main_queue(), ^{
                     [[KSLog shared] info:@"网页传输 %@", info[@"name"] ?: @""];
                     [weakSelf postWebTransferEvent:info];
                 });
             });
+            close(cfd);                 // 和 CTL/DATA 分支不同，这里没人再关它
             return;
         }
         if ([header hasPrefix:@"CTL "]) {
