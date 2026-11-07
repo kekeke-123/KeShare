@@ -22,7 +22,7 @@ OUT        := build
 APP_DIR    := $(OUT)/$(APP).app
 
 SRC_C      :=
-SRC_M      := main.m KSApp.m KSStore.m KSInternal.m KSDisc.m KSNet.m KSNetData.m KSNetServe.m KSSession.m KSUI.m KSActivityShim.m
+SRC_M      := main.m KSApp.m KSStore.m KSInternal.m KSDisc.m KSNet.m KSNetData.m KSNetServe.m KSSession.m KSWiFi.m KSUI.m KSActivityShim.m
 SRC_SWIFT  :=
 
 OBJ        := $(patsubst %.c,$(OUT)/%.o,$(notdir $(SRC_C))) \
@@ -36,7 +36,8 @@ SWIFTFLAGS := -target $(TARGET) -sdk $(SDK) -O -whole-module-optimization \
 LDFLAGS    := -target $(TARGET) -isysroot $(SDK) \
               -framework UIKit -framework Foundation -framework CoreBluetooth \
               -framework CoreGraphics -framework QuartzCore -framework Security \
-              -framework Network -framework UniformTypeIdentifiers
+              -framework Network -framework UniformTypeIdentifiers \
+              -framework NetworkExtension -framework SystemConfiguration
 
 .PHONY: all app sign ipa clean
 

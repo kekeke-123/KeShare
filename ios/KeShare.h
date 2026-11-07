@@ -246,6 +246,21 @@ NSString *KSKindNameForDevice(KSDeviceKind kind);
 @interface KSDeveloperViewController : KSViewController
 @end
 
+#pragma mark - 热点 / Wi-Fi
+
+@interface KSWiFi : NSObject
+/// 是否支持 App 内一键加入热点（需 HotspotConfiguration 能力）
++ (BOOL)hotspotJoinAvailable;
+/// 加入指定热点（调用后系统会弹一次确认）
++ (void)joinHotspot:(NSString *)ssid
+           password:(NSString *)password
+         completion:(void (^)(BOOL ok, NSString *message))completion;
+/// 当前 Wi-Fi 名称（需 Access WiFi Information 能力）
++ (void)currentSSID:(void (^)(NSString *ssid))completion;
+/// 热点网关地址（172.20.10.1 / 192.168.137.1），空串表示没连热点
++ (NSString *)hotspotGatewayAddress;
+@end
+
 #pragma mark - 灵动岛 / 实时活动
 //
 // 真正的 ActivityKit 实现在 KSActivityManager.swift（Swift）；

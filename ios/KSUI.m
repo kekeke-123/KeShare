@@ -98,9 +98,9 @@
     desc.translatesAutoresizingMaskIntoConstraints = NO;
 
     UIButton *settings = [UIButton buttonWithType:UIButtonTypeSystem];
-    [settings setTitle:@"打开设置" forState:UIControlStateNormal];
+    [settings setTitle:@"一键连接热点" forState:UIControlStateNormal];
     settings.titleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightSemibold];
-    [settings addTarget:self action:@selector(openNetworkSettings) forControlEvents:UIControlEventTouchUpInside];
+    [settings addTarget:self action:@selector(joinKeShareHotspot) forControlEvents:UIControlEventTouchUpInside];
     settings.translatesAutoresizingMaskIntoConstraints = NO;
 
     UIButton *copy = [UIButton buttonWithType:UIButtonTypeSystem];
@@ -130,6 +130,27 @@
         [copy.centerYAnchor constraintEqualToAnchor:settings.centerYAnchor]
     ]];
     banner.hidden = YES;
+}
+
+- (void)joinKeShareHotspot
+{
+    NSString *ssid = KSConfig.shared.hotspotSSID;
+    NSString *pwd = KSConfig.shared.hotspotPassword;
+    if (![KSWiFi hotspotJoinAvailable]) {
+        [self openNetworkSettings];
+        return;
+    }
+    [self showStatus:[NSString stringWithFormat:@"正在加入热点 %@ …", ssid]];
+    [KSWiFi joinHotspot:ssid password:pwd completion:^(BOOL ok, NSString *message) {
+        [self showStatus:ok ? @"已连接热点，正在搜索电脑…"
+                            : [NSString stringWithFormat:@"加入失败：%@", message]];
+        if (ok) {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.2 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{
+                [[KSServer shared] autoConnectKnownPeers];
+            });
+        }
+    }];
 }
 
 - (void)updateOfflineBanner
