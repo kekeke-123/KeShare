@@ -596,7 +596,8 @@ class HazeUI(object):
                  int(self.config_obj.data["share"]["chunk_kb"]),
                  int(self.config_obj.data["share"].get("concurrency", 4))), "right": "›"},
             {"glyph": "settings", "title": "自动接受", "subtitle":
-                "开" if self.config_obj.auto_accept else "关", "right": "›"},
+                "开" if getattr(self.config_obj, "auto_accept_pairing", False) else "关",
+             "right": "›"},
             {"glyph": "settings", "title": "局域网网页传输",
              "subtitle": ("开 · %s" % self._haze_web_url()) if self._haze_web_enabled() else "关",
              "right": "›"},
@@ -860,10 +861,23 @@ class HazeUI(object):
             {"glyph": "about", "title": "KeShare", "subtitle": "局域网文件互传", "right": ""},
             {"glyph": "about", "title": "版本", "subtitle": "0.0.1 beta3", "right": ""},
             {"glyph": "about", "title": "内核版本", "subtitle": "0.0.1-beta3+kernel.1", "right": ""},
-            {"glyph": "about", "title": "协议版本", "subtitle": "KS/1", "right": ""},
+            {"glyph": "about", "title": "协议版本", "subtitle": "KS/1 · HTTP · WS/1", "right": ""},
+            {"glyph": "about", "title": "局域网网页地址", "subtitle": self._haze_web_url(),
+             "right": "›"},
             {"glyph": "about", "title": "完整性校验", "subtitle": "SHA-256", "right": ""},
             {"glyph": "about", "title": "视觉语言", "subtitle": "Haze（磨砂玻璃）", "right": ""},
         ]
         widgets = self._page_header("关于", subtitle="内核版本长按 10 秒可进入开发者模式")
-        widgets += self._page_list(rows, empty_text="—")
+        widgets += self._page_list(rows, empty_text="—",
+                                   on_select=self._haze_about_selected)
         return widgets
+
+    def _haze_about_selected(self, index, row):
+        if (row or {}).get("title") != "局域网网页地址":
+            return
+        from .. import clipboard
+        try:
+            clipboard.copy_text(self._haze_web_url())
+            self.toast.show("地址已复制", self._haze_web_url(), "ok")
+        except Exception as exc:
+            self.toast.show("复制失败", str(exc), "error")
