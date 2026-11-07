@@ -461,7 +461,7 @@ class HazeUI(object):
         except Exception:
             tasks = []
         for t in tasks:
-            done = int(t.get("done") or 0)
+            done = int(t.get("received") or 0)
             total = int(t.get("size") or 0)
             pct = (100.0 * done / total) if total else 0.0
             direction = "接收" if t.get("direction") == "in" else "发送"
@@ -535,7 +535,7 @@ class HazeUI(object):
             tasks = [x.to_dict() for x in self.registry.items()]
         except Exception:
             tasks = []
-        active = [t for t in tasks if t.get("state") in ("running", "verifying")]
+        active = [t for t in tasks if t.get("state") in ("进行中", "校验中", "等待", "暂停")]
         return "%d 个进行中 / 共 %d 个" % (len(active), len(tasks))
 
     def _haze_cancel_all(self):

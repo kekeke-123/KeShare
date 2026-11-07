@@ -13,6 +13,23 @@
 
 @implementation KSServer (Serve)
 
+#pragma mark - 小工具
+
+/// 用控制链路里记录的远端地址去找设备名，找不到就给个通用名
+static NSString *KSPeerNameForLink(id<KSControlLink> link)
+{
+    NSString *host = nil;
+    if ([link conformsToProtocol:@protocol(KSServerControlLink)]) {
+        host = ((id<KSServerControlLink>)link).remoteIp;
+    }
+    if (host.length) {
+        for (KSDevice *d in [KSServer shared].peers) {
+            if ([d.host isEqualToString:host] && d.name.length) return d.name;
+        }
+    }
+    return @"对方设备";
+}
+
 #pragma mark - 写数据帧（本机是发送方）
 
 - (void)serveTransfer:(KSPendingTransfer *)pt onSocket:(int)fd
@@ -158,7 +175,7 @@
     tr.transferId = tid;
     tr.fileName = abs.lastPathComponent;
     tr.path = abs;
-    tr.peerName = @"对方设备";
+    tr.peerName = KSPeerNameForLink(link);
     tr.direction = KSTransferDirectionUpload;
     tr.total = size;
     tr.state = KSTransferStateWaiting;
@@ -225,19 +242,22 @@
         return;
     }
 
+    [[NSFileManager defaultManager] createDirectoryAtPath:KSConfig.shared.receivePath
+                              withIntermediateDirectories:YES attributes:nil error:NULL];
+
     KSPendingTransfer *pt = [[KSPendingTransfer alloc] init];
     pt.transferId = tid;
     pt.totalSize = size;
     pt.requestLink = link;
-    pt.finalPath = [KSConfig.shared.receivePath stringByAppendingPathComponent:name];
+    // 不覆盖同名已接收文件
+    pt.finalPath = KSUniquePathInDirectory(KSConfig.shared.receivePath, name);
     [[KSDataRegistry shared] addPending:pt];
-    [[NSFileManager defaultManager] createDirectoryAtPath:KSConfig.shared.receivePath
-                              withIntermediateDirectories:YES attributes:nil error:NULL];
 
+    NSString *peerName = KSPeerNameForLink(link);
     KSTransfer *tr = [[KSTransfer alloc] init];
     tr.transferId = tid;
-    tr.fileName = name;
-    tr.peerName = @"对方设备";
+    tr.fileName = pt.finalPath.lastPathComponent;
+    tr.peerName = peerName;
     tr.direction = KSTransferDirectionDownload;
     tr.total = size;
     tr.state = KSTransferStateWaiting;

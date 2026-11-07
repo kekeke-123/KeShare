@@ -499,8 +499,9 @@
     NSString *dir = KSConfig.shared.receivePath;
     [[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES
                                                    attributes:nil error:NULL];
-    NSString *dest = [dir stringByAppendingPathComponent:name];
+    NSString *dest = KSUniquePathInDirectory(dir, name);
     self.localDest[tid] = dest;
+    tr.path = dest;
 
     __weak typeof(self) weakSelf = self;
     [KSDataReceiver receiveFromHost:self.peer.host

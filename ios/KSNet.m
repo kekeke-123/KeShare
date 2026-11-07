@@ -218,13 +218,28 @@
 {
     if (!transfer.transferId.length) return;
     dispatch_sync(_q, ^{
+        BOOL replaced = NO;
         for (NSUInteger i = 0; i < self->_items.count; i++) {
             if ([self->_items[i].transferId isEqualToString:transfer.transferId]) {
                 self->_items[i] = transfer;
-                return;
+                replaced = YES;
+                break;
             }
         }
-        [self->_items insertObject:transfer atIndex:0];
+        if (!replaced) [self->_items insertObject:transfer atIndex:0];
+        // 只保留最近 60 条已结束的记录，避免无限增长
+        if (self->_items.count > 60) {
+            NSMutableArray *keep = [NSMutableArray array];
+            NSInteger finished = 0;
+            for (KSTransfer *t in self->_items) {
+                BOOL done = (t.state == KSTransferStateDone ||
+                             t.state == KSTransferStateFailed);
+                if (done) finished++;
+                if (done && finished > 40) continue;
+                [keep addObject:t];
+            }
+            if (keep.count < self->_items.count) self->_items = keep;
+        }
     });
     if (!transfer.startedAt) transfer.startedAt = [NSDate date];
     dispatch_async(dispatch_get_main_queue(), ^{

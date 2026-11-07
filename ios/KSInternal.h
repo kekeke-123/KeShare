@@ -107,6 +107,8 @@ BOOL KSReadFull(int fd, void *buf, size_t len);
 void KSWriteFull(int fd, const void *buf, size_t len);
 void KSSetNoDelay(int fd);
 NSString *KSIPv4StringLocal(void);
+/// 在 dir 下为 name 找一个不冲突的路径（"报告.pdf" → "报告 2.pdf"），避免覆盖已接收文件
+NSString *KSUniquePathInDirectory(NSString *dir, NSString *name);
 
 #pragma mark - 待传输登记（定义在 KSNetData.m）
 

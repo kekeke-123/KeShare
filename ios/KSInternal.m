@@ -77,6 +77,25 @@ NSString *KSSHA256HexOfData(NSData *data)
     return [NSString stringWithUTF8String:hex];
 }
 
+NSString *KSUniquePathInDirectory(NSString *dir, NSString *name)
+{
+    NSString *safe = name.length ? name : @"file";
+    NSString *candidate = [dir stringByAppendingPathComponent:safe];
+    if (![[NSFileManager defaultManager] fileExistsAtPath:candidate]) return candidate;
+
+    NSString *base = [safe stringByDeletingPathExtension];
+    NSString *ext = [safe pathExtension];
+    for (NSInteger i = 2; i < 1000; i++) {
+        NSString *next = ext.length
+            ? [NSString stringWithFormat:@"%@ %ld.%@", base, (long)i, ext]
+            : [NSString stringWithFormat:@"%@ %ld", base, (long)i];
+        candidate = [dir stringByAppendingPathComponent:next];
+        if (![[NSFileManager defaultManager] fileExistsAtPath:candidate]) return candidate;
+    }
+    return [dir stringByAppendingPathComponent:
+            [NSString stringWithFormat:@"%@-%@", KSRandomHex(4), safe]];
+}
+
 NSString *KSTokenFor(NSString *didA, NSString *nonceA, NSString *didB, NSString *nonceB)
 {
     NSMutableData *d = [NSMutableData data];

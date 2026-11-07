@@ -758,6 +758,8 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls
 
 - (void)reload
 {
+    // 手指正在滑动/减速时不要重载，否则会打断左滑手势
+    if (self.table.isDragging || self.table.isDecelerating) return;
     BOOL finished = self.segment.selectedSegmentIndex == 1;
     NSMutableArray *out = [NSMutableArray array];
     for (KSTransfer *t in [KSTransferCenter shared].transfers) {

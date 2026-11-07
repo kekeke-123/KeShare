@@ -263,11 +263,17 @@ class KSClient(object):
             if folder and not os.path.isdir(folder):
                 os.makedirs(folder)
             with open(part, "wb") as handle:
+                def _progress(received, total):
+                    transfer.notify(received, total)      # 注册表进度（暂停/详情页要看）
+                    if progress is not None:
+                        progress(received, total)
+
                 result = data.recv_file(sock, handle, expected_size=size,
-                                        progress=progress,
+                                        progress=_progress,
                                         timeout=max(60.0, deadline - time.time()),
                                         max_bytes=size or None,
-                                        pause_event=transfer.pause_event)
+                                        pause_event=transfer.pause_event,
+                                        should_cancel=lambda: transfer.cancelled)
             try:
                 sock.close()
             except OSError:

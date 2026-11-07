@@ -93,7 +93,7 @@ def recv_data_header(sock, max_bytes=protocol.DATA_LINE_MAX, prefix=b""):
 # File streaming
 # ---------------------------------------------------------------------------
 def send_file(sock, fileobj, size, chunk=CHUNK_DEFAULT, progress=None, rate=None,
-              pause_event=None):
+              pause_event=None, should_cancel=None):
     """Stream *fileobj* as chunk frames and return ``{sent, frames, digest}``.
 
     The SHA-KE-1024 digest is computed from the bytes actually written, so the
@@ -107,6 +107,8 @@ def send_file(sock, fileobj, size, chunk=CHUNK_DEFAULT, progress=None, rate=None
     started = time.time()
     hasher = filehash.Sha256()
     while True:
+        if should_cancel is not None and should_cancel():
+            raise DataError("传输已取消", "cancelled")
         if pause_event is not None and not pause_event.is_set():
             pause_event.wait(0.5)          # 暂停点：不消耗 CPU
             continue
@@ -138,7 +140,7 @@ def send_file(sock, fileobj, size, chunk=CHUNK_DEFAULT, progress=None, rate=None
 
 
 def recv_file(sock, fileobj, expected_size=0, progress=None, timeout=300.0,
-              max_bytes=None, pause_event=None):
+              max_bytes=None, pause_event=None, should_cancel=None):
     """Receive chunk frames into *fileobj*.
 
     Returns ``{size, digest, frames}`` where ``digest`` is the SHA-KE-1024 of the
@@ -152,6 +154,8 @@ def recv_file(sock, fileobj, expected_size=0, progress=None, timeout=300.0,
     hasher = filehash.Sha256()
     deadline = time.time() + float(timeout or 300.0)
     while True:
+        if should_cancel is not None and should_cancel():
+            raise DataError("传输已取消", "cancelled")
         if pause_event is not None and not pause_event.is_set():
             deadline += 0.5                # 暂停期间不累计超时
             pause_event.wait(0.5)
@@ -243,7 +247,7 @@ class Transfer(object):
 
     __slots__ = ("tid", "token", "name", "direction", "size", "path", "part",
                  "digest", "received", "error", "event", "callback", "kind",
-                 "link", "created", "pause_event", "paused")
+                 "link", "created", "pause_event", "paused", "cancelled")
 
     def __init__(self, tid, token, name, direction, path, size=0, kind="", link=None):
         self.tid = str(tid)
@@ -261,6 +265,7 @@ class Transfer(object):
         self.pause_event = threading.Event()
         self.pause_event.set()
         self.paused = False
+        self.cancelled = False
         self.callback = None
         self.kind = kind                      # "get" | "put"
         self.link = link                      # CTL session for "get" senders
@@ -353,8 +358,14 @@ class TransferRegistry(object):
         return True
 
     def cancel(self, tid):
-        transfer = self.pop(tid)
-        if transfer is not None and not transfer.done:
+        """标记取消：收发循环会在下一个检查点抛 cancelled 并停下。"""
+        transfer = self.get(tid)
+        if transfer is None:
+            return None
+        transfer.cancelled = True
+        transfer.paused = False
+        transfer.pause_event.set()        # 唤醒可能停在暂停点的循环
+        if not transfer.done:
             transfer.finish(error="cancelled")
         return transfer
 

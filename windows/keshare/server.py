@@ -507,6 +507,7 @@ class KSServer(object):
         last = [0]
 
         def progress(sent, total):
+            transfer.received = int(sent or 0)      # 详情页/列表页要读这个字段
             if sent - last[0] >= 65536 or sent >= total:
                 last[0] = sent
                 self._transfer_event("progress", id=transfer_id, name=name,
@@ -518,7 +519,8 @@ class KSServer(object):
                 result = data.send_file(
                     sock, handle, transfer.size, chunk=self.config.chunk_bytes,
                     progress=progress, rate=self.rate,
-                    pause_event=getattr(transfer, "pause_event", None))
+                    pause_event=getattr(transfer, "pause_event", None),
+                    should_cancel=lambda: getattr(transfer, "cancelled", False))
             transfer.finish(digest=result["digest"], received=result["sent"])
             self.stats["sent"] += 1
             self.log.info("已发送 %s -> %s:%s（%d 字节，%.0f KiB/s）" % (
@@ -565,7 +567,8 @@ class KSServer(object):
                 result = data.recv_file(sock, handle, expected_size=transfer.size,
                                         progress=progress, timeout=600.0,
                                         max_bytes=transfer.size or None,
-                                        pause_event=getattr(transfer, "pause_event", None))
+                                        pause_event=getattr(transfer, "pause_event", None),
+                                        should_cancel=lambda: getattr(transfer, "cancelled", False))
             if transfer.size and result["size"] != transfer.size:
                 raise data.DataError("字节数与声明不一致（%d/%d）"
                                      % (result["size"], transfer.size), "checksum")
