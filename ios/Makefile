@@ -41,7 +41,7 @@ LDFLAGS    := -target $(TARGET) -isysroot $(SDK) \
               -framework Network -framework ActivityKit -framework WidgetKit \
               -framework SwiftUI -framework UniformTypeIdentifiers
 
-.PHONY: all app sign ipa clean
+.PHONY: all app sign ipa ipa-noext clean
 
 all: app
 
@@ -109,4 +109,12 @@ ipa: sign
 clean:
 	@rm -rf $(OUT)
 
-
+# 兼容版：去掉 PlugIns（灵动岛扩展），供第三方签名工具使用
+# 未越狱设备必须用证书重签，很多工具处理不了 appex，这个版本最稳。
+ipa-noext: app
+	@rm -rf $(OUT)/Payload $(OUT)/$(APP)-noext.ipa
+	@rm -rf $(APP_DIR)/PlugIns
+	@mkdir -p $(OUT)/Payload
+	@cp -R $(APP_DIR) $(OUT)/Payload/
+	@cd $(OUT) && zip -qry $(APP)-noext.ipa Payload
+	@echo "built: $(OUT)/$(APP)-noext.ipa"

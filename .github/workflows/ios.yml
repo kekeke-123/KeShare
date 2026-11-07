@@ -60,10 +60,12 @@ jobs:
           echo "--- 签名校验 ---"
           /tmp/ldid -e build/KeShare.app/KeShare || true
           codesign -dv build/KeShare.app 2>&1 | head -5 || true
-      - name: 打包 IPA
+      - name: 打包 IPA（完整版 + 无扩展兼容版）
         run: |
           cd ios
           make ipa
+          make ipa-noext
+          ls -la build/*.ipa
 
       - name: 上传 artifacts
         uses: actions/upload-artifact@v4
@@ -71,6 +73,7 @@ jobs:
           name: KeShare-ios-arm64-${{ github.run_number }}
           path: |
             ios/build/KeShare.ipa
+            ios/build/KeShare-noext.ipa
             ios/build/KeShare.app/**
           retention-days: 30
           if-no-files-found: warn
@@ -80,13 +83,15 @@ jobs:
         if: success()
         run: |
           cp ios/build/KeShare.ipa "$RUNNER_TEMP/KeShare.ipa"
+          cp ios/build/KeShare-noext.ipa "$RUNNER_TEMP/KeShare-noext.ipa"
           cd "$RUNNER_TEMP"
           rm -rf pub && mkdir pub && cd pub
           git init -q
           git config user.name  "KeShare CI"
           git config user.email "ci@keshare.local"
           cp ../KeShare.ipa .
-          git add KeShare.ipa
+          cp ../KeShare-noext.ipa .
+          git add KeShare.ipa KeShare-noext.ipa
           git commit -qm "IPA build ${GITHUB_RUN_NUMBER} (${GITHUB_SHA:0:7})"
           git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" HEAD:artifacts
       # 失败时把编译日志写进 Issue（公开可读，方便排查）
