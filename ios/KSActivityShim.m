@@ -1,4 +1,4 @@
-﻿//
+//
 //  KSActivityShim.m -- 把 Objective-C 的调用转发到 Swift 的 KSActivityManager
 //
 //  之所以走 NSClassFromString：Swift 类由 swiftc 编入同一个二进制，

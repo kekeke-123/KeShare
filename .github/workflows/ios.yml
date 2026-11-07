@@ -1,4 +1,4 @@
-﻿name: iOS (arm64)
+name: iOS (arm64)
 
 permissions:
   contents: read

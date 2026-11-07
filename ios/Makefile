@@ -1,4 +1,4 @@
-﻿# KeShare for iOS (arm64) -- 直接用 clang / swiftc 构建，无需 Xcode 工程文件
+# KeShare for iOS (arm64) -- 直接用 clang / swiftc 构建，无需 Xcode 工程文件
 #
 #   make            构建 KeShare.app（含灵动岛扩展）
 #   make ipa        打包成 KeShare.ipa（未签名）

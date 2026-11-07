@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 #
 # Build KeShare for Windows with PyInstaller (one file per executable).
 #
