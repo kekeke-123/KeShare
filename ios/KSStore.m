@@ -248,7 +248,9 @@ static void mergeDefaults(NSMutableDictionary *dst, NSDictionary *def)
 - (NSInteger)maxFileMB { return [[self valueForPath:@"share.max_file_mb"] integerValue]; }
 - (void)setMaxFileMB:(NSInteger)v { [self setValue:@(v) forPath:@"share.max_file_mb"]; }
 - (NSInteger)concurrency { return [[self valueForPath:@"share.concurrency"] integerValue] ?: 1; }
-- (void)setConcurrency:(NSInteger)v { [self setValue:@(MAX(1, v)) forPath:@"share.concurrency"]; }\n\n- (NSInteger)chunkKB { return [[self valueForPath:@"share.chunk_kb"] integerValue]; }
+- (void)setConcurrency:(NSInteger)v { [self setValue:@(MAX(1, v)) forPath:@"share.concurrency"]; }
+
+- (NSInteger)chunkKB { return [[self valueForPath:@"share.chunk_kb"] integerValue]; }
 - (void)setChunkKB:(NSInteger)v { [self setValue:@(v) forPath:@"share.chunk_kb"]; }
 - (NSInteger)port { return [[self valueForPath:@"network.port"] integerValue]; }
 - (void)setPort:(NSInteger)v { [self setValue:@(v) forPath:@"network.port"]; }
