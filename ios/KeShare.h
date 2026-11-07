@@ -11,6 +11,8 @@
 NS_ASSUME_NONNULL_BEGIN
 
 #define KS_VERSION_STRING   @"0.0.1 beta1"
+#define KS_KERNEL_VERSION  @"0.0.1-beta1+kernel.1"   // 内核（协议实现）版本
+#define KS_PROTOCOL_VERSION @"KS/1"
 #define KS_BUILD_STRING     @"1"
 #define KS_PROTO_VERSION    1
 #define KS_DATA_PORT        47377
@@ -107,6 +109,7 @@ typedef NS_ENUM(NSInteger, KSTransferState) {
 @property (nonatomic, assign) BOOL autoAcceptPairing;
 @property (nonatomic, copy) NSString *discoveryMode;    // both / ble / wifi / off
 @property (nonatomic, copy) NSString *theme;            // dark / light / auto
+@property (nonatomic, assign) NSInteger devGateMode;      // 0=长按内核版本10秒 1=连点版本号16次
 @property (nonatomic, assign) BOOL autoConnect;              // 自动连接历史设备
 @property (nonatomic, assign) BOOL developerUnlocked;
 @property (nonatomic, assign) BOOL verboseLogging;

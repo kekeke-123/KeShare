@@ -583,57 +583,78 @@
         cell.detailTextLabel.text = KS_VERSION_STRING;
         cell.detailTextLabel.textColor = KSThemeTextSecondary();
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
-        UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(tapVersion)];
+        // 备用入口：连点 16 次（仅在密码输错后被启用）
+        UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self
+                                                                             action:@selector(tapVersion)];
         [cell addGestureRecognizer:tap];
         return cell;
     }
-    if (ip.row == 1) return [self cellWithTitle:@"配置文件" detail:@"settings.json" switchOn:NO];
-    return [self cellWithTitle:@"开发者选项" detail:@"" switchOn:NO];
+    if (ip.row == 1) {
+        UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:nil];
+        cell.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.06];
+        cell.textLabel.text = @"内核版本";
+        cell.textLabel.textColor = UIColor.whiteColor;
+        cell.detailTextLabel.text = KS_KERNEL_VERSION;
+        cell.detailTextLabel.textColor = KSThemeTextSecondary();
+        cell.selectionStyle = UITableViewCellSelectionStyleNone;
+        // 主入口：长按 10 秒（无任何文字提示）
+        UILongPressGestureRecognizer *press =
+            [[UILongPressGestureRecognizer alloc] initWithTarget:self
+                                                          action:@selector(onKernelLongPress:)];
+        press.minimumPressDuration = 10.0;
+        press.allowableMovement = 30.0;
+        [cell addGestureRecognizer:press];
+        return cell;
+    }
+    if (ip.row == 2) return [self cellWithTitle:@"协议版本" detail:KS_PROTOCOL_VERSION switchOn:NO];
+    if (KSConfig.shared.developerUnlocked && ip.row == 4) {
+        return [self cellWithTitle:@"开发者选项" detail:@"" switchOn:NO];
+    }
+    return [self cellWithTitle:@"配置文件" detail:@"settings.json" switchOn:NO];
 }
 
+- (void)onKernelLongPress:(UILongPressGestureRecognizer *)g
+{
+    if (g.state != UIGestureRecognizerStateBegan) return;
+    if (KSConfig.shared.devGateMode != 0) return;   // 密码输错后主入口失效
+    UIImpactFeedbackGenerator *h = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
+    [h impactOccurred];
+    [self promptDeveloperPassword];
+}
 - (void)promptDeveloperPassword
 {
-    UIAlertController *al = [UIAlertController
-        alertControllerWithTitle:@"需要开发者密码"
-                         message:@"密码包含大小写字母、数字与符号"
-                  preferredStyle:UIAlertControllerStyleAlert];
+    // 刻意不带标题与说明文字：验证通过前不暴露任何与开发者相关的信息
+    UIAlertController *al = [UIAlertController alertControllerWithTitle:nil
+                                                                message:nil
+                                                         preferredStyle:UIAlertControllerStyleAlert];
     [al addTextFieldWithConfigurationHandler:^(UITextField *tf) {
-        tf.placeholder = @"开发者密码";
         tf.secureTextEntry = YES;
         tf.autocapitalizationType = UITextAutocapitalizationTypeNone;
         tf.autocorrectionType = UITextAutocorrectionTypeNo;
+        tf.text = @"";
     }];
-    [al addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
     __weak typeof(self) weakSelf = self;
-    [al addAction:[UIAlertAction actionWithTitle:@"解锁" style:UIAlertActionStyleDefault
+    [al addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault
                                           handler:^(UIAlertAction *action) {
         NSString *input = al.textFields.firstObject.text ?: @"";
-        if (![KSDevGate verifyPassword:input]) {
-            UINotificationFeedbackGenerator *h = [[UINotificationFeedbackGenerator alloc] init];
-            [h notificationOccurred:UINotificationFeedbackTypeError];
-            [[KSLog shared] warn:@"开发者密码不正确"];
-            UIAlertController *bad = [UIAlertController alertControllerWithTitle:@"密码不正确"
-                                                                        message:@"请重新连点版本号再试"
-                                                                 preferredStyle:UIAlertControllerStyleAlert];
-            [bad addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];
-            [weakSelf presentViewController:bad animated:YES completion:nil];
+        if ([KSDevGate verifyPassword:input]) {
+            KSConfig.shared.developerUnlocked = YES;
+            [KSConfig.shared save];
+            UINotificationFeedbackGenerator *ok = [[UINotificationFeedbackGenerator alloc] init];
+            [ok notificationOccurred:UINotificationFeedbackTypeSuccess];
+            [weakSelf.table reloadData];
             return;
         }
-        KSConfig.shared.developerUnlocked = YES;
+        // 密码错误：主入口失效，改为「连点版本号 16 次」
+        KSConfig.shared.devGateMode = 1;
         [KSConfig.shared save];
-        [[KSLog shared] info:@"开发者模式已解锁"];
-        UINotificationFeedbackGenerator *h = [[UINotificationFeedbackGenerator alloc] init];
-        [h notificationOccurred:UINotificationFeedbackTypeSuccess];
-        [weakSelf.table reloadData];
-        UIAlertController *ok = [UIAlertController alertControllerWithTitle:@"开发者模式已开启"
-                                                                   message:@"设置页底部新增“开发者选项”"
-                                                            preferredStyle:UIAlertControllerStyleAlert];
-        [ok addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];
-        [weakSelf presentViewController:ok animated:YES completion:nil];
+        UINotificationFeedbackGenerator *bad = [[UINotificationFeedbackGenerator alloc] init];
+        [bad notificationOccurred:UINotificationFeedbackTypeError];
+        [[KSLog shared] warn:@"开发者入口校验失败，已切换到备用入口"];
     }]];
+    [al addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:al animated:YES completion:nil];
 }
-
 - (void)tapVersion
 {
     self.tapCount++;

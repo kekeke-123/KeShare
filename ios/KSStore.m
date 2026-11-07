@@ -250,6 +250,9 @@ static void mergeDefaults(NSMutableDictionary *dst, NSDictionary *def)
 - (void)setDiscoveryMode:(NSString *)v { [self setValue:v forPath:@"network.discovery"]; }
 - (NSString *)theme { return [self valueForPath:@"ui.theme"]; }
 - (void)setTheme:(NSString *)v { [self setValue:v forPath:@"ui.theme"]; }
+- (NSInteger)devGateMode { return [[self valueForPath:@"developer.gate_mode"] integerValue]; }
+- (void)setDevGateMode:(NSInteger)mode { [self setValue:@(mode) forPath:@"developer.gate_mode"]; }
+
 - (BOOL)autoConnect { return [[self valueForPath:@"network.auto_connect"] boolValue]; }
 - (void)setAutoConnect:(BOOL)v { [self setValue:@(v) forPath:@"network.auto_connect"]; }
 - (BOOL)developerUnlocked { return [[self valueForPath:@"developer.unlocked"] boolValue]; }

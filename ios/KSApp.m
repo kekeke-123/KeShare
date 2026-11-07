@@ -4,6 +4,7 @@
 //
 
 #import "KeShare.h"
+#import <objc/message.h>
 #import "KSInternal.h"
 #import <QuartzCore/QuartzCore.h>
 
@@ -123,12 +124,8 @@
 
 #pragma mark - 玻璃卡片
 
+
 @implementation KSGlassView
-{
-    UIVisualEffectView *_blur;
-    UIView *_tint;
-    UIView *_stroke;
-}
 
 + (instancetype)glassView
 {
@@ -139,76 +136,45 @@
 {
     if ((self = [super initWithFrame:frame])) {
         _cornerRadius = 18;
-        self.backgroundColor = [UIColor clearColor];
+        self.backgroundColor = UIColor.clearColor;
         self.layer.cornerRadius = _cornerRadius;
         self.layer.cornerCurve = kCACornerCurveContinuous;
         self.clipsToBounds = YES;
 
-        // iOS 26+ 的液态玻璃
-        Class glassClass = NSClassFromString(@"UIGlassEffect");
-        if (glassClass && [glassClass respondsToSelector:@selector(effectWithStyle:)]) {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
-            id effect = nil;
-            SEL sel = NSSelectorFromString(@"effectWithStyle:");
-            if ([glassClass respondsToSelector:sel]) {
-                NSMethodSignature *sig = [glassClass methodSignatureForSelector:sel];
-                NSInvocation *inv = [NSInvocation invocationWithMethodSignature:sig];
-                [inv setTarget:glassClass];
-                [inv setSelector:sel];
-                NSInteger style = 0;
-                [inv setArgument:&style atIndex:2];
-                [inv invoke];
-                [inv getReturnValue:&effect];
-            }
-#pragma clang diagnostic pop
-            if (effect) {
-                UIVisualEffectView *g = [[UIVisualEffectView alloc] initWithEffect:effect];
-                g.frame = self.bounds;
-                g.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-                [self addSubview:g];
-                _blur = g;
-            }
+        // 直接使用系统材质：iOS 26+ 的 UIGlassEffect，低版本退回系统模糊材质。
+        // 不自行绘制渐变/描边，保证与系统观感一致。
+        UIVisualEffect *effect = nil;
+        Class glass = NSClassFromString(@"UIGlassEffect");
+        if (glass && [glass respondsToSelector:@selector(effectWithStyle:)]) {
+            effect = ((UIVisualEffect * (*)(id, SEL, NSInteger))objc_msgSend)(
+                glass, @selector(effectWithStyle:), 0);
         }
-        if (!_blur) {
-            UIBlurEffect *e = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterialDark];
-            _blur = [[UIVisualEffectView alloc] initWithEffect:e];
-            _blur.frame = self.bounds;
-            _blur.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-            [self addSubview:_blur];
+        if (![effect isKindOfClass:[UIVisualEffect class]]) {
+            effect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterialDark];
         }
 
-        _tint = [[UIView alloc] initWithFrame:self.bounds];
-        _tint.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-        _tint.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.05];
-        [self addSubview:_tint];
-
-        _stroke = [[UIView alloc] initWithFrame:self.bounds];
-        _stroke.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-        _stroke.backgroundColor = [UIColor clearColor];
-        _stroke.layer.borderColor = KSTheme.shared.cardStroke.CGColor;
-        _stroke.layer.borderWidth = 1.0;
-        _stroke.layer.cornerRadius = _cornerRadius;
-        _stroke.layer.cornerCurve = kCACornerCurveContinuous;
-        _stroke.userInteractionEnabled = NO;
-        [self addSubview:_stroke];
+        UIVisualEffectView *blur = [[UIVisualEffectView alloc] initWithEffect:effect];
+        blur.frame = self.bounds;
+        blur.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        blur.userInteractionEnabled = NO;
+        [self addSubview:blur];
+        _blur = blur;
     }
     return self;
-}
-
-- (void)setCornerRadius:(CGFloat)cornerRadius
-{
-    _cornerRadius = cornerRadius;
-    self.layer.cornerRadius = cornerRadius;
-    _stroke.layer.cornerRadius = cornerRadius;
 }
 
 - (void)layoutSubviews
 {
     [super layoutSubviews];
     _blur.frame = self.bounds;
-    _tint.frame = self.bounds;
-    _stroke.frame = self.bounds;
+    self.layer.cornerRadius = _cornerRadius;
+}
+
+- (void)setCornerRadius:(CGFloat)radius
+{
+    _cornerRadius = radius;
+    self.layer.cornerRadius = radius;
+    [self setNeedsLayout];
 }
 
 @end
@@ -280,12 +246,25 @@
 @property (nonatomic, strong) UIWindow *window;
 @end
 
+static void KSHandleUncaughtException(NSException *exception)
+{
+    NSString *dir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+    NSString *text = [NSString stringWithFormat:@"%@\n%@\n%@\n%@\n",
+                      [NSDate date], exception.name, exception.reason,
+                      [exception.callStackSymbols componentsJoinedByString:@"\n"]];
+    [text writeToFile:[dir stringByAppendingPathComponent:@"crash.log"]
+           atomically:YES encoding:NSUTF8StringEncoding error:NULL];
+}
 @implementation KSAppDelegate
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions
 {
     [[KSLog shared] info:@"KeShare %@ 启动，设备 %@ (%@)", KS_VERSION_STRING,
         KSConfig.shared.deviceName, KSConfig.shared.deviceId];
+
+    // 崩溃兜底：把异常写进 Documents/crash.log，下次启动可提示，便于定位闪退
+    NSSetUncaughtExceptionHandler(&KSHandleUncaughtException);
+    [self reportPreviousCrashIfAny];
 
     self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
     self.window.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;

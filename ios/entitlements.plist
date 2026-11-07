@@ -2,24 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- 自签/侧载所需 -->
+    <!-- 只保留最小必要权限：多余 entitlement 不在描述文件里会导致安装后启动即被系统杀死 -->
     <key>get-task-allow</key>
     <true/>
-    <key>com.apple.security.app-sandbox</key>
-    <false/>
-
-    <!-- 热点配置：App 内一键加入电脑热点（对应证书里的「热点配置」） -->
     <key>com.apple.developer.networking.HotspotConfiguration</key>
     <true/>
-
-    <!-- 访问 Wi-Fi 信息：读取当前 SSID，判断是否已连上热点 -->
     <key>com.apple.developer.networking.wifi-info</key>
-    <true/>
-
-    <!-- 更大内存上限：大文件传输时不易被系统回收 -->
-    <key>com.apple.developer.kernel.increased-memory-limit</key>
-    <true/>
-    <key>com.apple.developer.kernel.extended-virtual-addressing</key>
     <true/>
 </dict>
 </plist>

@@ -61,6 +61,7 @@ $(APP_DIR)/$(APP): $(OBJ) Info.plist
 	@cp Info.plist $(APP_DIR)/Info.plist
 	@plutil -replace CFBundleShortVersionString -string "$(VERSION)" $(APP_DIR)/Info.plist
 	@plutil -replace CFBundleVersion -string "$(BUILD)" $(APP_DIR)/Info.plist
+	@cp -R Resources/. $(APP_DIR)/
 	@echo "built: $(APP_DIR)"
 
 # 伪签名（越狱设备安装必需）。没有 ldid 时跳过并提示。
