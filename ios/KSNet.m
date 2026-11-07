@@ -61,22 +61,234 @@
 #pragma mark - 传输任务
 
 @implementation KSTransfer
+{
+    NSCondition *_gate;
+    BOOL _paused;
+    BOOL _cancelled;
+}
+
+- (instancetype)init
+{
+    if ((self = [super init])) {
+        _gate = [[NSCondition alloc] init];
+        _paused = NO;
+        _cancelled = NO;
+        _startedAt = [NSDate date];
+    }
+    return self;
+}
+
 - (double)progress
 {
     if (self.total == 0) return self.state == KSTransferStateDone ? 1.0 : 0.0;
     return MIN(1.0, (double)self.done / (double)self.total);
 }
+
 - (NSString *)stateLabel
 {
     switch (self.state) {
         case KSTransferStateWaiting: return @"等待";
         case KSTransferStateRunning: return @"传输中";
+        case KSTransferStatePaused: return @"已暂停";
         case KSTransferStateVerifying: return @"校验中";
-        case KSTransferStateDone: return @"完成";
+        case KSTransferStateDone: return self.verified ? @"完成（已校验）" : @"完成";
         case KSTransferStateFailed: return self.errorText ?: @"失败";
     }
     return @"";
 }
+
+- (NSString *)speedLabel
+{
+    if (self.state == KSTransferStateDone) return @"—";
+    if (self.state == KSTransferStatePaused) return @"已暂停";
+    if (self.speedBps <= 1) return @"—";
+    return [NSString stringWithFormat:@"%@/s", KSFormatBytes((unsigned long long)self.speedBps)];
+}
+
+- (BOOL)paused
+{
+    [_gate lock];
+    BOOL v = _paused;
+    [_gate unlock];
+    return v;
+}
+
+- (BOOL)cancelled
+{
+    [_gate lock];
+    BOOL v = _cancelled;
+    [_gate unlock];
+    return v;
+}
+
+- (void)pause
+{
+    [_gate lock];
+    if (!_cancelled && self.state != KSTransferStateDone && self.state != KSTransferStateFailed) {
+        _paused = YES;
+        self.state = KSTransferStatePaused;
+        self.speedBps = 0;
+        [_gate broadcast];
+    }
+    [_gate unlock];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [[NSNotificationCenter defaultCenter] postNotificationName:KSTransfersDidChangeNotification
+                                                            object:self];
+    });
+}
+
+- (void)resume
+{
+    [_gate lock];
+    if (_paused) {
+        _paused = NO;
+        if (self.state == KSTransferStatePaused) self.state = KSTransferStateRunning;
+        [_gate broadcast];
+    }
+    [_gate unlock];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [[NSNotificationCenter defaultCenter] postNotificationName:KSTransfersDidChangeNotification
+                                                            object:self];
+    });
+}
+
+- (void)cancel
+{
+    [_gate lock];
+    _cancelled = YES;
+    _paused = NO;
+    self.state = KSTransferStateFailed;
+    self.errorText = @"已取消";
+    self.speedBps = 0;
+    [_gate broadcast];
+    [_gate unlock];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [[NSNotificationCenter defaultCenter] postNotificationName:KSTransfersDidChangeNotification
+                                                            object:self];
+    });
+}
+
+- (BOOL)checkpoint
+{
+    BOOL go = YES;
+    [_gate lock];
+    while (_paused && !_cancelled) {
+        [_gate waitUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.1]];
+    }
+    go = !_cancelled;
+    [_gate unlock];
+    return go;
+}
+
+@end
+
+#pragma mark - 全局传输记录
+
+@implementation KSTransferCenter
+{
+    NSMutableArray<KSTransfer *> *_items;
+    dispatch_queue_t _q;
+}
+
++ (KSTransferCenter *)shared
+{
+    static KSTransferCenter *c;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ c = [[KSTransferCenter alloc] init]; });
+    return c;
+}
+
+- (instancetype)init
+{
+    if ((self = [super init])) {
+        _items = [NSMutableArray array];
+        _q = dispatch_queue_create("keshare.transfers", DISPATCH_QUEUE_SERIAL);
+    }
+    return self;
+}
+
+- (NSArray<KSTransfer *> *)transfers
+{
+    __block NSArray *snapshot;
+    dispatch_sync(_q, ^{ snapshot = [self->_items copy]; });
+    return snapshot;
+}
+
+- (void)track:(KSTransfer *)transfer
+{
+    if (!transfer.transferId.length) return;
+    dispatch_sync(_q, ^{
+        for (NSUInteger i = 0; i < self->_items.count; i++) {
+            if ([self->_items[i].transferId isEqualToString:transfer.transferId]) {
+                self->_items[i] = transfer;
+                return;
+            }
+        }
+        [self->_items insertObject:transfer atIndex:0];
+    });
+    if (!transfer.startedAt) transfer.startedAt = [NSDate date];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [[NSNotificationCenter defaultCenter] postNotificationName:KSTransfersDidChangeNotification
+                                                            object:transfer];
+    });
+}
+
+- (KSTransfer *)transferWithId:(NSString *)tid
+{
+    if (!tid.length) return nil;
+    __block KSTransfer *found;
+    dispatch_sync(_q, ^{
+        for (KSTransfer *t in self->_items) {
+            if ([t.transferId isEqualToString:tid]) { found = t; break; }
+        }
+    });
+    return found;
+}
+
+- (BOOL)pauseWithId:(NSString *)tid
+{
+    KSTransfer *t = [self transferWithId:tid];
+    if (!t || t.state == KSTransferStateDone || t.state == KSTransferStateFailed) return NO;
+    [t pause];
+    [[KSLog shared] info:@"传输 %@ 已暂停", tid];
+    return YES;
+}
+
+- (BOOL)resumeWithId:(NSString *)tid
+{
+    KSTransfer *t = [self transferWithId:tid];
+    if (!t || !t.paused) return NO;
+    [t resume];
+    [[KSLog shared] info:@"传输 %@ 继续", tid];
+    return YES;
+}
+
+- (BOOL)cancelWithId:(NSString *)tid
+{
+    KSTransfer *t = [self transferWithId:tid];
+    if (!t) return NO;
+    [t cancel];
+    [[KSLog shared] info:@"传输 %@ 已取消", tid];
+    return YES;
+}
+
+- (void)clearFinished
+{
+    dispatch_sync(_q, ^{
+        NSMutableArray *keep = [NSMutableArray array];
+        for (KSTransfer *t in self->_items) {
+            if (t.state != KSTransferStateDone && t.state != KSTransferStateFailed) {
+                [keep addObject:t];
+            }
+        }
+        self->_items = keep;
+    });
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [[NSNotificationCenter defaultCenter] postNotificationName:KSTransfersDidChangeNotification
+                                                            object:nil];
+    });
+}
+
 @end
 
 #pragma mark - 蓝牙控制链路

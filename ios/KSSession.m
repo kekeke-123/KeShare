@@ -213,7 +213,8 @@
         @"osv": UIDevice.currentDevice.systemVersion ?: @"",
         @"port": @(KSConfig.shared.port),
         @"caps": @(KSConfig.shared.caps),
-        @"nonce": self.myNonce ?: KSRandomHex(16)
+        @"nonce": self.myNonce ?: KSRandomHex(16),
+        @"host": KSIPv4StringLocal()
     }];
 }
 
@@ -347,10 +348,15 @@
 
     if ([t isEqualToString:@"hash_resp"]) {
         NSString *tid = msg[@"id"];
-        KSTransfer *tr = [self transferWithId:tid];
+        KSTransfer *tr = [self transferWithId:tid] ?: [[KSTransferCenter shared] transferWithId:tid];
         BOOL ok = [msg[@"ok"] boolValue];
-        tr.state = ok ? KSTransferStateDone : KSTransferStateFailed;
-        if (!ok) tr.errorText = @"校验失败";
+        if (tr) {
+            tr.state = ok ? KSTransferStateDone : KSTransferStateFailed;
+            tr.verified = ok;
+            tr.speedBps = 0;
+            if (!ok) tr.errorText = msg[@"err"] ?: @"校验失败";
+        }
+        [[KSDataRegistry shared] removePendingForId:tid ?: @""];
         [[KSLog shared] info:@"上传 %@ %@", tid, ok ? @"校验通过" : @"校验失败"];
         [[NSNotificationCenter defaultCenter] postNotificationName:KSTransfersDidChangeNotification object:tr];
         return;
@@ -388,6 +394,7 @@
     tr.direction = KSTransferDirectionDownload;
     tr.state = KSTransferStateWaiting;
     [self.transfers addObject:tr];
+    [[KSTransferCenter shared] track:tr];
     [[NSNotificationCenter defaultCenter] postNotificationName:KSTransfersDidChangeNotification object:tr];
     [self.link sendMessage:@{ @"t": @"get", @"token": self.token ?: @"", @"id": tid, @"path": path }];
     [[KSLog shared] info:@"请求下载 %@ (id=%@)", path, tid];
@@ -405,21 +412,42 @@
     tr.total = [self fileSize:localPath];
     tr.state = KSTransferStateWaiting;
     [self.transfers addObject:tr];
+    [[KSTransferCenter shared] track:tr];
     [[NSNotificationCenter defaultCenter] postNotificationName:KSTransfersDidChangeNotification object:tr];
 
-    // 登记为“待发送”，KSServer 收到 DATA 行后写文件
-    Class pendingClass = NSClassFromString(@"KSPendingTransfer");
-    if (pendingClass) {
-        id p = [[pendingClass alloc] init];
-        [p setValue:tid forKey:@"transferId"];
-        [p setValue:localPath forKey:@"finalPath"];
-        [p setValue:tr forKey:@"publicTransfer"];
-        [p setValue:@(tr.total) forKey:@"totalSize"];
-        [[KSDataRegistry shared] addPending:p];
-    }
+    // 登记为“待发送”：对端连过来后由 KSServer 写数据帧（servePath 是关键，缺了它就变成自己去收）
+    KSPendingTransfer *p = [[KSPendingTransfer alloc] init];
+    p.transferId = tid;
+    p.servePath = localPath;
+    p.requestLink = self.link;
+    p.publicTransfer = tr;
+    p.totalSize = tr.total;
+    [[KSDataRegistry shared] addPending:p];
+
+    // host/port 必须带上：对端要用它回连我们的数据端口
     [self.link sendMessage:@{ @"t": @"put_offer", @"token": self.token ?: @"", @"id": tid,
-                              @"name": tr.fileName, @"size": @(tr.total) }];
+                              @"name": tr.fileName, @"size": @(tr.total),
+                              @"did": KSConfig.shared.deviceId ?: @"",
+                              @"host": KSIPv4StringLocal(),
+                              @"port": @(KSConfig.shared.port) }];
     [[KSLog shared] info:@"请求上传 %@ (id=%@, %llu 字节)", tr.fileName, tid, tr.total];
+}
+
+#pragma mark 暂停 / 继续 / 取消
+
+- (BOOL)pauseTransferWithId:(NSString *)transferId
+{
+    return [[KSTransferCenter shared] pauseWithId:transferId];
+}
+
+- (BOOL)resumeTransferWithId:(NSString *)transferId
+{
+    return [[KSTransferCenter shared] resumeWithId:transferId];
+}
+
+- (BOOL)cancelTransferWithId:(NSString *)transferId
+{
+    return [[KSTransferCenter shared] cancelWithId:transferId];
 }
 
 - (void)sendClipboardText:(NSString *)text
@@ -449,6 +477,8 @@
     }
     tr.total = size;
     tr.state = KSTransferStateRunning;
+    tr.startedAt = [NSDate date];
+    [[KSTransferCenter shared] track:tr];
     [[NSNotificationCenter defaultCenter] postNotificationName:KSTransfersDidChangeNotification object:tr];
 
     // 灵动岛：开始实时活动
@@ -469,13 +499,14 @@
     [KSDataReceiver receiveFromHost:self.peer.host
                                port:self.peer.port
                               token:self.token ?: @""
-                          transferId:tid
-                                size:size
-                         destination:dest
-                          onProgress:^(unsigned long long done) {
+                         transferId:tid
+                               size:size
+                        destination:dest
+                           transfer:tr
+                         onProgress:^(unsigned long long done) {
         KSTransfer *t2 = [weakSelf transferWithId:tid];
         t2.done = done;
-        t2.state = KSTransferStateRunning;
+        if (t2.state != KSTransferStatePaused) t2.state = KSTransferStateRunning;
         KSActivityUpdate(t2.progress, [NSString stringWithFormat:@"%@ / %@",
                                        KSFormatBytes(done), KSFormatBytes(t2.total)]);
         [[NSNotificationCenter defaultCenter] postNotificationName:KSTransfersDidChangeNotification object:t2];
@@ -484,9 +515,11 @@
         if (error) {
             t2.state = KSTransferStateFailed;
             t2.errorText = error;
+            t2.speedBps = 0;
             [[KSLog shared] error:@"下载 %@ 失败: %@", tid, error];
         } else {
             t2.state = KSTransferStateVerifying;
+            t2.speedBps = 0;
             weakSelf.localTemp[tid] = tempPath;
             [[KSLog shared] info:@"下载 %@ 数据完成 %@，等待哈希", tid, tempPath.lastPathComponent];
         }
@@ -522,7 +555,9 @@
             path = dest;
         }
         tr.state = KSTransferStateDone;
+        tr.verified = YES;
         tr.done = tr.total;
+        tr.speedBps = 0;
         tr.path = path;
         [[KSLog shared] info:@"%@ 校验通过：%@", tid, path.lastPathComponent];
     }
@@ -569,6 +604,7 @@
              transferId:(NSString *)tid
                    size:(unsigned long long)size
             destination:(NSString *)dest
+               transfer:(KSTransfer *)transfer
              onProgress:(void (^)(unsigned long long))progress
              completion:(void (^)(NSString *tempPath, NSString *error))completion
 {
@@ -611,6 +647,8 @@
         unsigned long long written = 0;
         BOOL ok = YES;
         uint32_t expectSeq = 0;
+        NSTimeInterval lastT = [NSDate timeIntervalSinceReferenceDate];
+        unsigned long long lastBytes = 0;
 
         while (YES) {
             uint8_t hdr[16];
@@ -635,6 +673,25 @@
             if (!KSReadFull(fd, buf.mutableBytes, len)) { ok = NO; break; }
             [fh writeData:buf];
             written += len;
+
+            if (transfer) {
+                // 暂停 / 取消
+                if (![transfer checkpoint]) {
+                    [fh closeFile];
+                    close(fd);
+                    [[NSFileManager defaultManager] removeItemAtPath:tmp error:NULL];
+                    completion(nil, @"已取消");
+                    return;
+                }
+                NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
+                if (now - lastT >= 0.4) {
+                    double inst = (double)(written - lastBytes) / (now - lastT);
+                    transfer.speedBps = (transfer.speedBps > 0)
+                        ? (transfer.speedBps * 0.6 + inst * 0.4) : inst;
+                    lastBytes = written;
+                    lastT = now;
+                }
+            }
             if (progress) progress(written);
         }
         [fh closeFile];

@@ -291,6 +291,10 @@ class GlassWidget(object):
                 return True
         return False
 
+    def destroy(self):
+        """释放附属资源（默认没有）。"""
+        return None
+
     def on_context(self, px, py):
         """右键；返回 True 表示已处理。"""
         for child in reversed(self.children):
@@ -563,6 +567,47 @@ class GlassList(GlassWidget):
         self.scroll = max(0.0, min(max_scroll, self.scroll - delta * 48))
         self.app.invalidate()
         return True
+
+
+
+
+class GlassInput(GlassWidget):
+    """输入框：玻璃底 + 原生 Entry 覆盖（自绘光标成本高，直接借用 Entry）。
+
+    Entry 是独立 widget，用 place 浮在 canvas 上，销毁时要一起清掉。
+    """
+
+    def __init__(self, app, rect, value="", placeholder="", on_change=None):
+        super().__init__(app, rect, 10)
+        import tkinter as tk
+        self.value = str(value or "")
+        self.placeholder = placeholder
+        self.on_change = on_change
+        self.entry = tk.Entry(
+            app,
+            bg="#111827", fg="#F2F5FA", insertbackground="#5CB8FF",
+            relief="flat", bd=0, highlightthickness=1,
+            highlightbackground="#2A3550", highlightcolor="#5CB8FF",
+            font=("Microsoft YaHei UI", 10),
+        )
+        if self.value:
+            self.entry.insert(0, self.value)
+        self.entry.place(x=int(app.winfo_rootx() * 0 + rect[0]),
+                         y=int(rect[1]), width=int(rect[2]), height=int(rect[3]))
+        if on_change:
+            self.entry.bind("<KeyRelease>", lambda e: on_change(self.entry.get()))
+
+    def text(self):
+        try:
+            return self.entry.get()
+        except Exception:
+            return self.value
+
+    def destroy(self):
+        try:
+            self.entry.destroy()
+        except Exception:
+            pass
 
 
 class GlassSidebar(GlassWidget):

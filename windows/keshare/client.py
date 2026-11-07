@@ -260,7 +260,8 @@ class KSClient(object):
                 result = data.recv_file(sock, handle, expected_size=size,
                                         progress=progress,
                                         timeout=max(60.0, deadline - time.time()),
-                                        max_bytes=size or None)
+                                        max_bytes=size or None,
+                                        pause_event=getattr(transfer, "pause_event", None))
             try:
                 sock.close()
             except OSError:

@@ -517,7 +517,8 @@ class KSServer(object):
             with open(transfer.path, "rb") as handle:
                 result = data.send_file(
                     sock, handle, transfer.size, chunk=self.config.chunk_bytes,
-                    progress=progress, rate=self.rate)
+                    progress=progress, rate=self.rate,
+                    pause_event=getattr(transfer, "pause_event", None))
             transfer.finish(digest=result["digest"], received=result["sent"])
             self.stats["sent"] += 1
             self.log.info("已发送 %s -> %s:%s（%d 字节，%.0f KiB/s）" % (
@@ -563,7 +564,8 @@ class KSServer(object):
             with open(part, "wb") as handle:
                 result = data.recv_file(sock, handle, expected_size=transfer.size,
                                         progress=progress, timeout=600.0,
-                                        max_bytes=transfer.size or None)
+                                        max_bytes=transfer.size or None,
+                                        pause_event=getattr(transfer, "pause_event", None))
             if transfer.size and result["size"] != transfer.size:
                 raise data.DataError("字节数与声明不一致（%d/%d）"
                                      % (result["size"], transfer.size), "checksum")

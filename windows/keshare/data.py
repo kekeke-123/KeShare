@@ -92,7 +92,8 @@ def recv_data_header(sock, max_bytes=protocol.DATA_LINE_MAX, prefix=b""):
 # ---------------------------------------------------------------------------
 # File streaming
 # ---------------------------------------------------------------------------
-def send_file(sock, fileobj, size, chunk=CHUNK_DEFAULT, progress=None, rate=None):
+def send_file(sock, fileobj, size, chunk=CHUNK_DEFAULT, progress=None, rate=None,
+              pause_event=None):
     """Stream *fileobj* as chunk frames and return ``{sent, frames, digest}``.
 
     The SHA-KE-1024 digest is computed from the bytes actually written, so the
@@ -106,6 +107,9 @@ def send_file(sock, fileobj, size, chunk=CHUNK_DEFAULT, progress=None, rate=None
     started = time.time()
     hasher = filehash.Sha256()
     while True:
+        if pause_event is not None and not pause_event.is_set():
+            pause_event.wait(0.5)          # 暂停点：不消耗 CPU
+            continue
         data = fileobj.read(chunk)
         if not data:
             break
@@ -134,7 +138,7 @@ def send_file(sock, fileobj, size, chunk=CHUNK_DEFAULT, progress=None, rate=None
 
 
 def recv_file(sock, fileobj, expected_size=0, progress=None, timeout=300.0,
-              max_bytes=None):
+              max_bytes=None, pause_event=None):
     """Receive chunk frames into *fileobj*.
 
     Returns ``{size, digest, frames}`` where ``digest`` is the SHA-KE-1024 of the
@@ -148,6 +152,10 @@ def recv_file(sock, fileobj, expected_size=0, progress=None, timeout=300.0,
     hasher = filehash.Sha256()
     deadline = time.time() + float(timeout or 300.0)
     while True:
+        if pause_event is not None and not pause_event.is_set():
+            deadline += 0.5                # 暂停期间不累计超时
+            pause_event.wait(0.5)
+            continue
         remaining = deadline - time.time()
         if remaining <= 0:
             raise DataError("接收文件超时", "io")
@@ -235,7 +243,7 @@ class Transfer(object):
 
     __slots__ = ("tid", "token", "name", "direction", "size", "path", "part",
                  "digest", "received", "error", "event", "callback", "kind",
-                 "link", "created")
+                 "link", "created", "pause_event", "paused")
 
     def __init__(self, tid, token, name, direction, path, size=0, kind="", link=None):
         self.tid = str(tid)
@@ -249,6 +257,10 @@ class Transfer(object):
         self.received = 0
         self.error = None
         self.event = threading.Event()
+        # set = 正常运行；clear = 暂停（发送/接收循环在检查点等待）
+        self.pause_event = threading.Event()
+        self.pause_event.set()
+        self.paused = False
         self.callback = None
         self.kind = kind                      # "get" | "put"
         self.link = link                      # CTL session for "get" senders
@@ -310,6 +322,24 @@ class TransferRegistry(object):
     def pop(self, tid):
         with self._lock:
             return self._items.pop(str(tid), None)
+
+    def pause(self, tid):
+        """暂停一个传输（发送/接收循环会在检查点停下）。"""
+        t = self.get(tid)
+        if t is None:
+            return False
+        t.pause_event.clear()
+        t.paused = True
+        return True
+
+    def resume(self, tid):
+        """继续一个已暂停的传输。"""
+        t = self.get(tid)
+        if t is None:
+            return False
+        t.pause_event.set()
+        t.paused = False
+        return True
 
     def cancel(self, tid):
         transfer = self.pop(tid)

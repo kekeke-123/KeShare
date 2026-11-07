@@ -55,6 +55,8 @@
 
 #pragma mark - 服务器：监听 47377，接收数据通道
 
+@class KSTcpServerLink;
+
 @interface KSServer () <KSControlLinkDelegate>
 @end
 
@@ -65,6 +67,8 @@
 @property (nonatomic, strong) dispatch_queue_t netQ;
 @property (nonatomic, strong) id<KSControlLink> controlLink;   // BLE 广播端
 @property (nonatomic, strong) NSNetService *netService;
+/// 服务端握手（TCP 接入的 hello，在读线程里同步回包）
+- (void)handleServerHello:(NSDictionary *)message link:(KSTcpServerLink *)link;
 @end
 
 @implementation KSServer
@@ -269,6 +273,9 @@
         uint32_t expectSeq = 0;
         unsigned long long written = 0;
         BOOL ok = YES;
+        NSTimeInterval t0 = [NSDate timeIntervalSinceReferenceDate];
+        unsigned long long lastBytes = 0;
+        NSTimeInterval lastT = t0;
 
         while (YES) {
             uint8_t hdr[16];
@@ -298,8 +305,24 @@
             pt.done = written;
             KSTransfer *pub = pt.publicTransfer;
             if (pub) {
+                // 用户在详情页点了暂停/取消，要在这里停下来
+                if (![pub checkpoint]) {
+                    [fh closeFile];
+                    close(cfd);
+                    [[NSFileManager defaultManager] removeItemAtPath:tmp error:NULL];
+                    [[KSDataRegistry shared] removePendingForId:tid];
+                    [[KSLog shared] info:@"传输 %@ 已取消", tid];
+                    return;
+                }
                 pub.done = written;
-                pub.state = KSTransferStateRunning;
+                if (pub.state != KSTransferStatePaused) pub.state = KSTransferStateRunning;
+                NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
+                if (now - lastT >= 0.4) {
+                    double inst = (double)(written - lastBytes) / (now - lastT);
+                    pub.speedBps = (pub.speedBps > 0) ? (pub.speedBps * 0.6 + inst * 0.4) : inst;
+                    lastBytes = written;
+                    lastT = now;
+                }
                 dispatch_async(dispatch_get_main_queue(), ^{
                     [[NSNotificationCenter defaultCenter] postNotificationName:KSTransfersDidChangeNotification
                                                                         object:pub];
@@ -313,6 +336,12 @@
         if (!ok) {
             [[NSFileManager defaultManager] removeItemAtPath:tmp error:NULL];
             [[KSLog shared] error:@"传输 %@ 数据阶段失败", tid];
+            KSTransfer *pub0 = pt.publicTransfer;
+            if (pub0) {
+                pub0.state = KSTransferStateFailed;
+                pub0.errorText = @"数据通道中断";
+                pub0.speedBps = 0;
+            }
             [[KSDataRegistry shared] removePendingForId:tid];
             return;
         }
@@ -325,12 +354,82 @@
         if (pub) {
             pub.done = written;
             pub.state = KSTransferStateVerifying;
+            pub.speedBps = 0;
             dispatch_async(dispatch_get_main_queue(), ^{
                 [[NSNotificationCenter defaultCenter] postNotificationName:KSTransfersDidChangeNotification object:pub];
             });
         }
     }
 }
+
+#pragma mark - 服务端控制链路（accepted socket 上的一条 CTL 会话）
+
+/// 关键：对端连进来的控制通道，所有回包必须写回这条 socket。
+/// 旧实现把回包写到全局 BLE 链路，WiFi 回退时握手永远完不成。
+@interface KSTcpServerLink : NSObject <KSServerControlLink>
+@property (nonatomic, weak) id<KSControlLinkDelegate> delegate;
+@property (nonatomic, assign) int fd;
+@property (nonatomic, copy) NSString *nonce;
+@property (nonatomic, copy, nullable) NSString *peerDid;
+@property (nonatomic, copy, nullable) NSString *remoteIp;
+- (instancetype)initWithFd:(int)fd remoteIp:(nullable NSString *)ip;
+@end
+
+@implementation KSTcpServerLink
+{
+    NSLock *_sendLock;
+    BOOL _open;
+}
+
+- (instancetype)initWithFd:(int)fd remoteIp:(NSString *)ip
+{
+    if ((self = [super init])) {
+        _fd = fd;
+        _remoteIp = [ip copy] ?: @"";
+        _nonce = @"";
+        _sendLock = [[NSLock alloc] init];
+        _open = YES;
+    }
+    return self;
+}
+
+- (NSString *)transportName { return @"WiFi 回退"; }
+- (BOOL)isOpen { return _open; }
+
+- (void)sendMessage:(NSDictionary *)message
+{
+    NSData *json = [NSJSONSerialization dataWithJSONObject:message options:0 error:NULL];
+    if (!json) return;
+    uint32_t len = (uint32_t)json.length;
+    NSMutableData *frame = [NSMutableData dataWithCapacity:json.length + 4];
+    uint8_t hdr[4] = { (uint8_t)(len >> 24), (uint8_t)(len >> 16), (uint8_t)(len >> 8), (uint8_t)len };
+    [frame appendBytes:hdr length:4];
+    [frame appendData:json];
+
+    [_sendLock lock];
+    if (_open && _fd >= 0) {
+        KSWriteFull(_fd, frame.bytes, frame.length);
+    }
+    [_sendLock unlock];
+
+    if (KSConfig.shared.verboseLogging) {
+        [[KSLog shared] log:@"CTL→(srv) %@", message[@"t"]];
+    }
+}
+
+- (void)close
+{
+    [_sendLock lock];
+    _open = NO;
+    if (_fd >= 0) {
+        shutdown(_fd, SHUT_RDWR);
+        close(_fd);
+        _fd = -1;
+    }
+    [_sendLock unlock];
+}
+
+@end
 
 #pragma mark WiFi 回退控制通道（服务端）
 
@@ -342,47 +441,92 @@
 
 - (void)serveControlSocketWithPrefix:(int)fd prefix:(const uint8_t *)prefix length:(NSUInteger)plen
 {
+    KSTcpServerLink *link = [[KSTcpServerLink alloc] initWithFd:fd remoteIp:@""];
+    link.delegate = self;
+
     dispatch_async(self.netQ, ^{
-        uint8_t buf[4];
-        NSMutableData *prefixBuf = plen ? [NSMutableData dataWithBytes:prefix length:plen] : nil;
+        NSMutableData *buf = [NSMutableData data];
+        if (plen) [buf appendBytes:prefix length:plen];
+        uint8_t tmp[4096];
+
         while (YES) {
-            uint32_t len = 0;
-            NSUInteger have = 0;
-            while (have < 4) {
-                if (prefixBuf.length) {
-                    uint8_t b = ((const uint8_t *)prefixBuf.bytes)[0];
-                    buf[have++] = b;
-                    [prefixBuf replaceBytesInRange:NSMakeRange(0, 1) withBytes:NULL length:0];
-                } else {
-                    ssize_t n = read(fd, buf + have, 4 - have);
-                    if (n <= 0) { close(fd); return; }
-                    have += (NSUInteger)n;
+            @autoreleasepool {
+                while (buf.length < 4) {
+                    ssize_t n = read(fd, tmp, sizeof tmp);
+                    if (n <= 0) { [link close]; return; }
+                    [buf appendBytes:tmp length:(NSUInteger)n];
                 }
-            }
-            len = ((uint32_t)buf[0] << 24) | ((uint32_t)buf[1] << 16) |
-                  ((uint32_t)buf[2] << 8) | buf[3];
-            if (len == 0 || len > 65536) { close(fd); return; }
-            NSMutableData *body = [NSMutableData dataWithLength:len];
-            NSUInteger got = 0;
-            if (prefixBuf.length) {
-                NSUInteger take = MIN(prefixBuf.length, (NSUInteger)len);
-                [body replaceBytesInRange:NSMakeRange(0, take) withBytes:prefixBuf.bytes length:take];
-                got = take;
-                [prefixBuf setLength:0];
-            }
-            while (got < len) {
-                ssize_t n = read(fd, (uint8_t *)body.mutableBytes + got, len - got);
-                if (n <= 0) { close(fd); return; }
-                got += (NSUInteger)n;
-            }
-            id obj = [NSJSONSerialization JSONObjectWithData:body options:0 error:NULL];
-            if ([obj isKindOfClass:[NSDictionary class]]) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    [self controlLink:self.controlLink didReceiveMessage:obj];
-                });
+                const uint8_t *b = buf.bytes;
+                uint32_t len = ((uint32_t)b[0] << 24) | ((uint32_t)b[1] << 16) |
+                               ((uint32_t)b[2] << 8) | b[3];
+                if (len == 0 || len > 65536) {
+                    [[KSLog shared] warn:@"控制帧长度非法 %u，断开", len];
+                    [link close];
+                    return;
+                }
+                while (buf.length < 4 + (NSUInteger)len) {
+                    ssize_t n = read(fd, tmp, sizeof tmp);
+                    if (n <= 0) { [link close]; return; }
+                    [buf appendBytes:tmp length:(NSUInteger)n];
+                }
+                NSData *body = [buf subdataWithRange:NSMakeRange(4, len)];
+                [buf replaceBytesInRange:NSMakeRange(0, 4 + (NSUInteger)len)
+                               withBytes:NULL length:0];
+
+                id obj = [NSJSONSerialization JSONObjectWithData:body options:0 error:NULL];
+                if (![obj isKindOfClass:[NSDictionary class]]) continue;
+                NSDictionary *msg = (NSDictionary *)obj;
+
+                // hello 必须在读线程里同步处理，否则 list 请求会抢在握手前面
+                NSString *kind = msg[@"t"];
+                if ([kind isEqualToString:@"hello"]) {
+                    [self handleServerHello:msg link:link];
+                } else {
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        [self controlLink:link didReceiveMessage:msg];
+                    });
+                }
             }
         }
     });
+}
+
+#pragma mark 服务端握手（B 侧：必须回 token，否则 Windows 侧校验直接失败）
+
+- (void)handleServerHello:(NSDictionary *)message link:(KSTcpServerLink *)link
+{
+    NSString *peerDid = message[@"did"] ?: @"";
+    NSString *peerNonce = message[@"nonce"] ?: @"";
+    NSString *peerHost = message[@"host"];
+    if (peerHost.length) link.remoteIp = peerHost;
+    link.peerDid = peerDid;
+    if (!link.nonce.length) link.nonce = KSRandomHex(8);
+
+    NSString *token = KSTokenFor(peerDid, peerNonce, KSConfig.shared.deviceId ?: @"", link.nonce);
+
+    KSDevice *d = [KSDevice deviceWithDictionary:message];
+    if (peerHost.length) d.host = peerHost;
+    if (!d.port) d.port = (uint16_t)([message[@"port"] unsignedShortValue]);
+    d.connected = YES;
+    // addPeer 会发通知，必须回到主线程，否则表格在后台线程重载会崩
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self addPeer:d];
+    });
+
+    NSDictionary *ack = @{
+        @"t": @"hello_ack", @"v": @(KS_PROTO_VERSION),
+        @"did": KSConfig.shared.deviceId ?: @"",
+        @"name": KSConfig.shared.deviceName ?: @"iPhone",
+        @"kind": @"ios",
+        @"osv": UIDevice.currentDevice.systemVersion ?: @"",
+        @"port": @(KSConfig.shared.port),
+        @"caps": @(KSConfig.shared.caps),
+        @"nonce": link.nonce,
+        @"token": token,
+        @"host": KSIPv4StringLocal()
+    };
+    [link sendMessage:ack];
+    [[KSLog shared] info:@"控制通道接入：%@ (%@) token=%@", d.name, link.remoteIp ?: @"-", token];
 }
 
 #pragma mark KSControlLinkDelegate（作为接收端）
@@ -398,10 +542,14 @@
 {
     NSString *t = message[@"t"];
     if ([t isEqualToString:@"hello"]) {
+        // 这条路径只在 BLE 控制通道上用得到；TCP 接入的 hello 在读线程里就处理完了
         KSDevice *d = [KSDevice deviceWithDictionary:message];
         d.host = message[@"host"] ?: KSIPv4StringLocal();
         d.connected = YES;
         [self addPeer:d];
+        NSString *nonce = KSRandomHex(8);
+        NSString *token = KSTokenFor(message[@"did"] ?: @"", message[@"nonce"] ?: @"",
+                                     KSConfig.shared.deviceId ?: @"", nonce);
         NSDictionary *ack = @{
             @"t": @"hello_ack", @"v": @(KS_PROTO_VERSION),
             @"did": KSConfig.shared.deviceId ?: @"",
@@ -410,10 +558,13 @@
             @"osv": UIDevice.currentDevice.systemVersion ?: @"",
             @"port": @(KSConfig.shared.port),
             @"caps": @(KSConfig.shared.caps),
-            @"nonce": KSRandomHex(16),
+            @"nonce": nonce,
+            @"token": token,
             @"host": KSIPv4StringLocal()
         };
         [link sendMessage:ack];
+    } else if ([t isEqualToString:@"list"]) {
+        [self handleListRequest:message link:link];
     } else if ([t isEqualToString:@"get"]) {
         [self handleGetRequest:message link:link];
     } else if ([t isEqualToString:@"put_offer"]) {
@@ -422,6 +573,13 @@
         [self handleHashMessage:message link:link];
     } else if ([t isEqualToString:@"hash_resp"]) {
         [self handleHashAck:message];
+    } else if ([t isEqualToString:@"clip"]) {
+        if ([[message[@"mode"] description] isEqualToString:@"get"]) {
+            [link sendMessage:@{@"t": @"clip", @"mode": @"set",
+                                @"text": UIPasteboard.generalPasteboard.string ?: @""}];
+        } else if ([message[@"text"] isKindOfClass:[NSString class]]) {
+            UIPasteboard.generalPasteboard.string = message[@"text"];
+        }
     } else if ([t isEqualToString:@"bye"]) {
         [link close];
     }
@@ -455,7 +613,10 @@
         [link sendMessage:@{@"t": @"hash_resp", @"id": tid ?: @"", @"ok": @YES}];
         if (pub) {
             pub.state = KSTransferStateDone;
+            pub.verified = YES;
             pub.done = pub.total = KSFileSize(dest);
+            pub.path = dest;
+            pub.speedBps = 0;
             dispatch_async(dispatch_get_main_queue(), ^{
                 [[NSNotificationCenter defaultCenter] postNotificationName:KSTransfersDidChangeNotification object:pub];
             });
@@ -469,6 +630,7 @@
         if (pub) {
             pub.state = KSTransferStateFailed;
             pub.errorText = @"校验失败";
+            pub.speedBps = 0;
             dispatch_async(dispatch_get_main_queue(), ^{
                 [[NSNotificationCenter defaultCenter] postNotificationName:KSTransfersDidChangeNotification object:pub];
             });

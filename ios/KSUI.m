@@ -303,7 +303,7 @@
 {
     [super viewDidLoad];
     self.segment = [[UISegmentedControl alloc] initWithItems:@[@"共享目录", @"已接收"]];
-    self.segment.selectedSegmentIndex = 0;
+    self.segment.selectedSegmentIndex = 1;
     self.segment.translatesAutoresizingMaskIntoConstraints = NO;
     [self.segment addTarget:self action:@selector(reload) forControlEvents:UIControlEventValueChanged];
     [self.view addSubview:self.segment];
@@ -328,10 +328,39 @@
         [self.table.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
     ]];
 
-    self.navigationItem.rightBarButtonItem =
-        [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemRefresh
-                                                      target:self action:@selector(reload)];
+    self.navigationItem.rightBarButtonItems = @[
+        [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"arrow.up.arrow.down.circle"]
+                                         style:UIBarButtonItemStylePlain
+                                        target:self action:@selector(openTransfers)],
+        [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd
+                                                      target:self action:@selector(importTapped)]
+    ];
     [self reload];
+}
+
+- (void)viewWillAppear:(BOOL)animated
+{
+    [super viewWillAppear:animated];
+    [self reload];
+    [self updateTransfersBadge];
+}
+
+- (void)updateTransfersBadge
+{
+    NSInteger active = 0;
+    for (KSTransfer *t in [KSTransferCenter shared].transfers) {
+        if (t.state != KSTransferStateDone && t.state != KSTransferStateFailed) active++;
+    }
+    // 有任务在跑时把图标换成「带数字」的版本（UIBarButtonItem 没有 badgeValue）
+    NSString *glyph = active > 0
+        ? [NSString stringWithFormat:@"arrow.up.arrow.down.circle.fill"]
+        : @"arrow.up.arrow.down.circle";
+    self.navigationItem.rightBarButtonItems.firstObject.image = [UIImage systemImageNamed:glyph];
+}
+
+- (void)openTransfers
+{
+    [self.navigationController pushViewController:[[KSTransfersViewController alloc] init] animated:YES];
 }
 
 #pragma mark - 导入与发送
@@ -512,9 +541,12 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls
 
 #pragma mark - 传输列表
 
-@interface KSTransfersViewController () <UITableViewDataSource>
+@interface KSTransfersViewController () <UITableViewDataSource, UITableViewDelegate>
 @property (nonatomic, strong) UITableView *table;
-@property (nonatomic, strong) NSMutableArray<KSTransfer *> *items;
+@property (nonatomic, strong) UISegmentedControl *segment;
+@property (nonatomic, strong) NSArray<KSTransfer *> *items;
+@property (nonatomic, strong) NSTimer *ticker;
+@property (nonatomic, strong) UIView *actionBar;
 @end
 
 @implementation KSTransfersViewController
@@ -541,30 +573,148 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls
                  hint:@"对方传输时断开 WIFI、对方传输时没电关机、对方取消传输、对方切到后台等"];
 }
 
-
 - (void)viewDidLoad
 {
     [super viewDidLoad];
-    self.items = [NSMutableArray array];
-    self.table = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
+    self.title = @"传输任务";
+    self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeNever;
+
+    self.segment = [[UISegmentedControl alloc] initWithItems:@[@"正在传输", @"已完成"]];
+    self.segment.selectedSegmentIndex = 0;
+    self.segment.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.segment addTarget:self action:@selector(reload) forControlEvents:UIControlEventValueChanged];
+    [self.view addSubview:self.segment];
+
+    self.table = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStyleInsetGrouped];
     self.table.backgroundColor = UIColor.clearColor;
     self.table.dataSource = self;
-    self.table.rowHeight = 74;
-    self.table.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    self.table.delegate = self;
+    self.table.rowHeight = 86;
+    self.table.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:self.table];
 
-    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(update:)
+    [NSLayoutConstraint activateConstraints:@[
+        [self.segment.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:8],
+        [self.segment.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:20],
+        [self.segment.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-20],
+        [self.table.topAnchor constraintEqualToAnchor:self.segment.bottomAnchor constant:2],
+        [self.table.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.table.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.table.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor constant:-70],
+    ]];
+
+    [self buildActionBar];
+    [self reload];
+
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(reload)
                                                  name:KSTransfersDidChangeNotification object:nil];
 }
 
-- (void)update:(NSNotification *)note
+- (void)buildActionBar
 {
-    KSTransfer *t = note.object;
-    if ([t isKindOfClass:[KSTransfer class]] && ![self.items containsObject:t]) {
-        [self.items insertObject:t atIndex:0];
+    UIStackView *stack = [[UIStackView alloc] init];
+    stack.axis = UILayoutConstraintAxisHorizontal;
+    stack.distribution = UIStackViewDistributionFillEqually;
+    stack.spacing = 10;
+    stack.translatesAutoresizingMaskIntoConstraints = NO;
+
+    NSArray *titles = @[@"全部暂停", @"全部取消", @"清除已完成"];
+    NSArray *selectors = @[@"pauseAll", @"cancelAll", @"clearFinished"];
+    for (NSUInteger i = 0; i < titles.count; i++) {
+        UIButton *b = [UIButton buttonWithType:UIButtonTypeSystem];
+        [b setTitle:titles[i] forState:UIControlStateNormal];
+        b.titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightSemibold];
+        b.backgroundColor = (i == 1)
+            ? [[UIColor systemRedColor] colorWithAlphaComponent:0.18]
+            : [UIColor colorWithWhite:1 alpha:0.08];
+        [b setTitleColor:(i == 1) ? [UIColor systemRedColor] : UIColor.whiteColor
+                forState:UIControlStateNormal];
+        b.layer.cornerRadius = 14;
+        b.layer.cornerCurve = kCACornerCurveContinuous;
+        b.tag = (NSInteger)i + 1;
+        SEL sel = NSSelectorFromString(selectors[i]);
+        [b addTarget:self action:sel forControlEvents:UIControlEventTouchUpInside];
+        [stack addArrangedSubview:b];
     }
+    [self.view addSubview:stack];
+    [NSLayoutConstraint activateConstraints:@[
+        [stack.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:20],
+        [stack.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-20],
+        [stack.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor constant:-8],
+        [stack.heightAnchor constraintEqualToConstant:44],
+    ]];
+}
+
+- (void)viewWillAppear:(BOOL)animated
+{
+    [super viewWillAppear:animated];
+    [self reload];
+    if (!self.ticker) {
+        __weak typeof(self) weakSelf = self;
+        self.ticker = [NSTimer scheduledTimerWithTimeInterval:0.8 repeats:YES
+                                                      block:^(NSTimer *t) {
+            [weakSelf reload];
+        }];
+    }
+}
+
+- (void)viewWillDisappear:(BOOL)animated
+{
+    [super viewWillDisappear:animated];
+    [self.ticker invalidate];
+    self.ticker = nil;
+}
+
+- (void)pauseAll
+{
+    for (KSTransfer *t in [KSTransferCenter shared].transfers) {
+        if (t.state == KSTransferStateRunning || t.state == KSTransferStateWaiting) {
+            [[KSTransferCenter shared] pauseWithId:t.transferId];
+        }
+    }
+    [self reload];
+}
+
+- (void)cancelAll
+{
+    NSMutableArray *active = [NSMutableArray array];
+    for (KSTransfer *t in [KSTransferCenter shared].transfers) {
+        if (t.state == KSTransferStateDone || t.state == KSTransferStateFailed) continue;
+        [active addObject:t];
+    }
+    if (active.count == 0) return;
+    UIAlertController *al = [UIAlertController alertControllerWithTitle:@"取消全部传输？"
+                                                                message:@"已传输的部分会被丢弃"
+                                                         preferredStyle:UIAlertControllerStyleActionSheet];
+    [al addAction:[UIAlertAction actionWithTitle:@"取消全部" style:UIAlertActionStyleDestructive
+                                        handler:^(UIAlertAction *a) {
+        for (KSTransfer *t in active) [[KSTransferCenter shared] cancelWithId:t.transferId];
+        [self reload];
+    }]];
+    [al addAction:[UIAlertAction actionWithTitle:@"再想想" style:UIAlertActionStyleCancel handler:nil]];
+    al.popoverPresentationController.sourceView = self.table;
+    [self presentViewController:al animated:YES completion:nil];
+}
+
+- (void)clearFinished
+{
+    [[KSTransferCenter shared] clearFinished];
+    [self reload];
+}
+
+- (void)reload
+{
+    BOOL finished = self.segment.selectedSegmentIndex == 1;
+    NSMutableArray *out = [NSMutableArray array];
+    for (KSTransfer *t in [KSTransferCenter shared].transfers) {
+        BOOL isFinished = (t.state == KSTransferStateDone || t.state == KSTransferStateFailed);
+        if (isFinished == finished) [out addObject:t];
+    }
+    self.items = out;
     [self.table reloadData];
 }
+
+#pragma mark - Table
 
 - (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)section
 {
@@ -579,32 +729,467 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:cid];
         cell.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.06];
         cell.textLabel.textColor = UIColor.whiteColor;
+        cell.textLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
         cell.detailTextLabel.textColor = KSThemeTextSecondary();
+        cell.detailTextLabel.font = [UIFont systemFontOfSize:11];
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
+
         UIProgressView *pv = [[UIProgressView alloc] initWithProgressViewStyle:UIProgressViewStyleDefault];
         pv.tag = 99;
-        pv.frame = CGRectMake(18, 56, tv.bounds.size.width - 90, 4);
         pv.progressTintColor = KSSystemAccent();
+        pv.trackTintColor = [UIColor colorWithWhite:1 alpha:0.14];
+        pv.translatesAutoresizingMaskIntoConstraints = NO;
         [cell.contentView addSubview:pv];
+
+        UILabel *speed = [[UILabel alloc] init];
+        speed.tag = 98;
+        speed.font = [UIFont monospacedDigitSystemFontOfSize:11 weight:UIFontWeightMedium];
+        speed.textColor = KSThemeTextSecondary();
+        speed.textAlignment = NSTextAlignmentRight;
+        speed.translatesAutoresizingMaskIntoConstraints = NO;
+        [cell.contentView addSubview:speed];
+
+        [NSLayoutConstraint activateConstraints:@[
+            [pv.leadingAnchor constraintEqualToAnchor:cell.textLabel.leadingAnchor],
+            [pv.trailingAnchor constraintEqualToAnchor:cell.contentView.trailingAnchor constant:-18],
+            [pv.bottomAnchor constraintEqualToAnchor:cell.contentView.bottomAnchor constant:-10],
+            [speed.trailingAnchor constraintEqualToAnchor:cell.contentView.trailingAnchor constant:-18],
+            [speed.centerYAnchor constraintEqualToAnchor:cell.detailTextLabel.centerYAnchor],
+        ]];
     }
+    UIProgressView *pv = (UIProgressView *)[cell.contentView viewWithTag:99];
+    UILabel *speed = (UILabel *)[cell.contentView viewWithTag:98];
+
     if (self.items.count == 0) {
-        cell.textLabel.text = @"还没有传输";
-        cell.detailTextLabel.text = @"从“附近设备”连接后即可收发";
+        cell.textLabel.text = @"还没有传输任务";
+        cell.detailTextLabel.text = @"从「附近设备」连接后即可收发";
         cell.imageView.image = [UIImage systemImageNamed:@"arrow.up.arrow.down"];
-        ((UIProgressView *)[cell.contentView viewWithTag:99]).hidden = YES;
+        pv.hidden = YES;
+        speed.text = @"";
         return cell;
     }
     KSTransfer *t = self.items[ip.row];
-    ((UIProgressView *)[cell.contentView viewWithTag:99]).hidden = NO;
+    pv.hidden = NO;
     cell.textLabel.text = t.fileName;
     cell.detailTextLabel.text = [NSString stringWithFormat:@"%@ · %@ · %@ / %@ · %@",
-                                 t.peerName,
-                                 t.direction == KSTransferDirectionUpload ? @"上传" : @"下载",
+                                 t.peerName ?: @"—",
+                                 t.direction == KSTransferDirectionUpload ? @"发送" : @"接收",
                                  KSFormatBytes(t.done), KSFormatBytes(t.total), t.stateLabel];
     cell.imageView.image = [UIImage systemImageNamed:
-        t.direction == KSTransferDirectionUpload ? @"arrow.up.circle" : @"arrow.down.circle"];
-    [(UIProgressView *)[cell.contentView viewWithTag:99] setProgress:(float)t.progress animated:YES];
+        t.direction == KSTransferDirectionUpload ? @"arrow.up.circle.fill" : @"arrow.down.circle.fill"];
+    [pv setProgress:(float)t.progress animated:YES];
+    speed.text = t.state == KSTransferStatePaused ? @"已暂停" : t.speedLabel;
     return cell;
+}
+
+- (UISwipeActionsConfiguration *)tableView:(UITableView *)tv
+    trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)ip
+{
+    if (ip.row >= (NSInteger)self.items.count) return nil;
+    KSTransfer *t = self.items[ip.row];
+    BOOL active = (t.state != KSTransferStateDone && t.state != KSTransferStateFailed);
+    if (!active) return nil;
+    __weak typeof(self) weakSelf = self;
+    UIContextualAction *pause = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleNormal
+                                                                       title:t.paused ? @"继续" : @"暂停"
+                                                                     handler:^(UIContextualAction *a, UIView *v, void (^done)(BOOL)) {
+        if (t.paused) [[KSTransferCenter shared] resumeWithId:t.transferId];
+        else [[KSTransferCenter shared] pauseWithId:t.transferId];
+        [weakSelf reload];
+        done(YES);
+    }];
+    UIContextualAction *cancel = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive
+                                                                        title:@"取消"
+                                                                      handler:^(UIContextualAction *a, UIView *v, void (^done)(BOOL)) {
+        [[KSTransferCenter shared] cancelWithId:t.transferId];
+        [weakSelf reload];
+        done(YES);
+    }];
+    return [UISwipeActionsConfiguration configurationWithActions:@[cancel, pause]];
+}
+
+- (void)tableView:(UITableView *)tv didSelectRowAtIndexPath:(NSIndexPath *)ip
+{
+    [tv deselectRowAtIndexPath:ip animated:YES];
+    if (ip.row >= (NSInteger)self.items.count) return;
+    KSTransferDetailViewController *vc = [[KSTransferDetailViewController alloc] init];
+    vc.transfer = self.items[ip.row];
+    [self.navigationController pushViewController:vc animated:YES];
+}
+
+@end
+
+#pragma mark - 传输任务详情
+
+@interface KSTransferDetailViewController ()
+@property (nonatomic, strong) UITableView *table;
+@property (nonatomic, strong) NSTimer *ticker;
+@property (nonatomic, strong) NSArray<NSArray *> *rows;
+@end
+
+@implementation KSTransferDetailViewController
+
+- (void)viewDidLoad
+{
+    [super viewDidLoad];
+    self.title = @"任务详情";
+    self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeNever;
+
+    self.table = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
+    self.table.backgroundColor = UIColor.clearColor;
+    self.table.dataSource = self;
+    self.table.delegate = self;
+    self.table.rowHeight = 48;
+    self.table.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [self.view addSubview:self.table];
+
+    [self rebuildRows];
+    __weak typeof(self) weakSelf = self;
+    self.ticker = [NSTimer scheduledTimerWithTimeInterval:0.6 repeats:YES block:^(NSTimer *t) {
+        [weakSelf rebuildRows];
+        [weakSelf.table reloadData];
+    }];
+}
+
+- (void)viewWillDisappear:(BOOL)animated
+{
+    [super viewWillDisappear:animated];
+    [self.ticker invalidate];
+    self.ticker = nil;
+}
+
+- (void)rebuildRows
+{
+    KSTransfer *t = self.transfer;
+    if (!t) return;
+    NSString *verify = t.verified ? @"SHA-256 校验通过"
+                     : (t.state == KSTransferStateFailed ? @"未通过 / 未完成"
+                        : (t.state == KSTransferStateVerifying ? @"正在校验…" : @"等待校验"));
+    NSString *progress = [NSString stringWithFormat:@"%@ / %@（%.1f%%）",
+                          KSFormatBytes(t.done), KSFormatBytes(t.total), t.progress * 100.0];
+    NSString *started = t.startedAt ? [NSDateFormatter localizedStringFromDate:t.startedAt
+                                                                    dateStyle:NSDateFormatterNoStyle
+                                                                    timeStyle:NSDateFormatterMediumStyle]
+                                    : @"—";
+    self.rows = @[
+        @[@"文件名", t.fileName ?: @"—"],
+        @[@"方向", t.direction == KSTransferDirectionUpload ? @"发送" : @"接收"],
+        @[@"对端设备", t.peerName ?: @"—"],
+        @[@"进度", progress],
+        @[@"速度", t.state == KSTransferStatePaused ? @"已暂停" : t.speedLabel],
+        @[@"状态", t.stateLabel ?: @"—"],
+        @[@"完整性", verify],
+        @[@"开始时间", started],
+        @[@"保存位置", t.path ?: @"—"],
+        @[@"任务 ID", t.transferId ?: @"—"],
+    ];
+    self.navigationItem.rightBarButtonItem = nil;
+    if (t.state != KSTransferStateDone && t.state != KSTransferStateFailed) {
+        self.navigationItem.rightBarButtonItem =
+            [[UIBarButtonItem alloc] initWithTitle:(t.paused ? @"继续" : @"暂停")
+                                             style:UIBarButtonItemStylePlain
+                                            target:self action:@selector(togglePause)];
+    }
+}
+
+- (void)togglePause
+{
+    KSTransfer *t = self.transfer;
+    if (!t) return;
+    if (t.paused) [[KSTransferCenter shared] resumeWithId:t.transferId];
+    else [[KSTransferCenter shared] pauseWithId:t.transferId];
+    [self rebuildRows];
+    [self.table reloadData];
+}
+
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tv { return 2; }
+
+- (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)section
+{
+    return section == 0 ? (NSInteger)self.rows.count : 3;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tv cellForRowAtIndexPath:(NSIndexPath *)ip
+{
+    UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1
+                                                   reuseIdentifier:nil];
+    cell.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.06];
+    cell.textLabel.font = [UIFont systemFontOfSize:13];
+    cell.textLabel.textColor = KSThemeTextSecondary();
+    cell.detailTextLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
+    cell.detailTextLabel.textColor = UIColor.whiteColor;
+    cell.selectionStyle = UITableViewCellSelectionStyleNone;
+
+    if (ip.section == 0) {
+        cell.textLabel.text = self.rows[ip.row][0];
+        cell.detailTextLabel.text = self.rows[ip.row][1];
+        cell.detailTextLabel.numberOfLines = 2;
+        return cell;
+    }
+    NSArray *titles = @[@"取消任务", @"分享文件", @"复制保存路径"];
+    cell.textLabel.text = titles[ip.row];
+    cell.textLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
+    cell.textLabel.textColor = (ip.row == 0) ? [UIColor systemRedColor] : KSSystemAccent();
+    cell.detailTextLabel.text = @"";
+    cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+    cell.textLabel.textAlignment = NSTextAlignmentCenter;
+    return cell;
+}
+
+- (void)tableView:(UITableView *)tv didSelectRowAtIndexPath:(NSIndexPath *)ip
+{
+    [tv deselectRowAtIndexPath:ip animated:YES];
+    if (ip.section != 1) return;
+    KSTransfer *t = self.transfer;
+    if (ip.row == 0) {
+        UIAlertController *al = [UIAlertController alertControllerWithTitle:@"取消该任务？"
+                                                                    message:@"已传输的部分会被丢弃"
+                                                             preferredStyle:UIAlertControllerStyleAlert];
+        [al addAction:[UIAlertAction actionWithTitle:@"取消任务" style:UIAlertActionStyleDestructive
+                                            handler:^(UIAlertAction *a) {
+            [[KSTransferCenter shared] cancelWithId:t.transferId];
+            [self.navigationController popViewControllerAnimated:YES];
+        }]];
+        [al addAction:[UIAlertAction actionWithTitle:@"再想想" style:UIAlertActionStyleCancel handler:nil]];
+        [self presentViewController:al animated:YES completion:nil];
+    } else if (ip.row == 1) {
+        if (t.path.length && [[NSFileManager defaultManager] fileExistsAtPath:t.path]) {
+            UIActivityViewController *av = [[UIActivityViewController alloc]
+                initWithActivityItems:@[[NSURL fileURLWithPath:t.path]] applicationActivities:nil];
+            [self presentViewController:av animated:YES completion:nil];
+        } else {
+            [self ks_showError:@"文件还不存在" code:@"NoFile" hint:@"传输完成并通过校验后才能分享"];
+        }
+    } else {
+        UIPasteboard.generalPasteboard.string = t.path ?: @"";
+    }
+}
+
+@end
+
+#pragma mark - 设备（手动连接）
+
+@interface KSAddDeviceViewController : KSViewController <UITextFieldDelegate>
+@property (nonatomic, copy) void (^onSaved)(KSDevice *device, BOOL connect);
+@property (nonatomic, strong) UITextField *nameField;
+@property (nonatomic, strong) UITextField *hostField;
+@property (nonatomic, strong) UITextField *portField;
+@end
+
+@implementation KSAddDeviceViewController
+
+- (void)viewDidLoad
+{
+    [super viewDidLoad];
+    self.title = @"添加设备";
+    self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeNever;
+
+    self.nameField = [self fieldWithPlaceholder:@"备注名（可选）" keyboard:UIKeyboardTypeDefault];
+    self.hostField = [self fieldWithPlaceholder:@"IP 地址，例如 192.168.1.100" keyboard:UIKeyboardTypeDecimalPad];
+    self.portField = [self fieldWithPlaceholder:@"端口" keyboard:UIKeyboardTypeNumberPad];
+    self.portField.text = @(KSConfig.shared.port).stringValue;
+
+    UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:@[
+        self.nameField, self.hostField, self.portField
+    ]];
+    stack.axis = UILayoutConstraintAxisVertical;
+    stack.spacing = 10;
+    stack.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:stack];
+
+    UIButton *save = [UIButton buttonWithType:UIButtonTypeSystem];
+    [save setTitle:@"保存" forState:UIControlStateNormal];
+    save.backgroundColor = [UIColor colorWithWhite:1 alpha:0.10];
+    [save setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    save.layer.cornerRadius = 14;
+    save.layer.cornerCurve = kCACornerCurveContinuous;
+    [save addTarget:self action:@selector(saveOnly) forControlEvents:UIControlEventTouchUpInside];
+
+    UIButton *saveConnect = [UIButton buttonWithType:UIButtonTypeSystem];
+    [saveConnect setTitle:@"保存并连接" forState:UIControlStateNormal];
+    saveConnect.backgroundColor = KSSystemAccent();
+    [saveConnect setTitleColor:UIColor.blackColor forState:UIControlStateNormal];
+    saveConnect.titleLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightSemibold];
+    saveConnect.layer.cornerRadius = 14;
+    saveConnect.layer.cornerCurve = kCACornerCurveContinuous;
+    [saveConnect addTarget:self action:@selector(saveAndConnect) forControlEvents:UIControlEventTouchUpInside];
+
+    UIStackView *buttons = [[UIStackView alloc] initWithArrangedSubviews:@[save, saveConnect]];
+    buttons.axis = UILayoutConstraintAxisHorizontal;
+    buttons.distribution = UIStackViewDistributionFillEqually;
+    buttons.spacing = 10;
+    buttons.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:buttons];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [stack.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:20],
+        [stack.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:20],
+        [stack.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-20],
+        [buttons.topAnchor constraintEqualToAnchor:stack.bottomAnchor constant:20],
+        [buttons.leadingAnchor constraintEqualToAnchor:stack.leadingAnchor],
+        [buttons.trailingAnchor constraintEqualToAnchor:stack.trailingAnchor],
+        [buttons.heightAnchor constraintEqualToConstant:46],
+    ]];
+}
+
+- (UITextField *)fieldWithPlaceholder:(NSString *)placeholder keyboard:(UIKeyboardType)kb
+{
+    UITextField *f = [[UITextField alloc] init];
+    f.placeholder = placeholder;
+    f.keyboardType = kb;
+    f.textColor = UIColor.whiteColor;
+    f.attributedPlaceholder = [[NSAttributedString alloc]
+        initWithString:placeholder
+            attributes:@{NSForegroundColorAttributeName: [UIColor colorWithWhite:1 alpha:0.4]}];
+    f.backgroundColor = [UIColor colorWithWhite:1 alpha:0.08];
+    f.layer.cornerRadius = 12;
+    f.layer.cornerCurve = kCACornerCurveContinuous;
+    f.leftView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 12, 44)];
+    f.leftViewMode = UITextFieldViewModeAlways;
+    f.translatesAutoresizingMaskIntoConstraints = NO;
+    [f.heightAnchor constraintEqualToConstant:44].active = YES;
+    return f;
+}
+
+- (void)commit:(BOOL)connect
+{
+    NSString *host = [self.hostField.text stringByTrimmingCharactersInSet:
+                      [NSCharacterSet whitespaceCharacterSet]];
+    if (host.length == 0) {
+        [self ks_showError:@"IP 地址不能为空" code:@"BadAddr" hint:@"示例：192.168.1.100"];
+        return;
+    }
+    NSInteger port = self.portField.text.integerValue;
+    if (port <= 0 || port > 65535) port = KSConfig.shared.port;
+
+    KSDevice *d = [[KSDevice alloc] init];
+    d.deviceId = [NSString stringWithFormat:@"manual-%@", host];
+    d.name = self.nameField.text.length ? self.nameField.text : host;
+    d.host = host;
+    d.port = (uint16_t)port;
+    d.kind = KSDeviceKindWindows;
+    [KSConfig.shared rememberDevice:d];
+    [[KSServer shared] addPeer:d];
+    if (self.onSaved) self.onSaved(d, connect);
+    [self.navigationController popViewControllerAnimated:YES];
+}
+
+- (void)saveOnly { [self commit:NO]; }
+- (void)saveAndConnect { [self commit:YES]; }
+
+@end
+
+@interface KSManualDevicesViewController () <UITableViewDataSource, UITableViewDelegate>
+@property (nonatomic, strong) UITableView *table;
+@property (nonatomic, strong) NSArray<NSDictionary *> *items;
+@end
+
+@implementation KSManualDevicesViewController
+
+- (void)viewDidLoad
+{
+    [super viewDidLoad];
+    self.table = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
+    self.table.backgroundColor = UIColor.clearColor;
+    self.table.dataSource = self;
+    self.table.delegate = self;
+    self.table.rowHeight = 62;
+    self.table.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [self.view addSubview:self.table];
+
+    self.navigationItem.rightBarButtonItem =
+        [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd
+                                                      target:self action:@selector(addDevice)];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(reload)
+                                                 name:KSPeersDidChangeNotification object:nil];
+    [self reload];
+}
+
+- (void)reload
+{
+    self.items = [KSConfig.shared knownDevices] ?: @[];
+    [self.table reloadData];
+}
+
+- (void)addDevice
+{
+    KSAddDeviceViewController *vc = [[KSAddDeviceViewController alloc] init];
+    __weak typeof(self) weakSelf = self;
+    vc.onSaved = ^(KSDevice *device, BOOL connect) {
+        [weakSelf reload];
+        if (connect) [weakSelf connectDevice:device];
+    };
+    [self.navigationController pushViewController:vc animated:YES];
+}
+
+- (void)connectDevice:(KSDevice *)d
+{
+    KSSession *session = [[KSSession alloc] initWithPeer:d];
+    [session startAsInitiator:YES];
+    [[KSServer shared].sessions setObject:session forKey:d.deviceId ?: @""];
+    [self ks_showError:[NSString stringWithFormat:@"正在连接 %@", d.name] code:@"Conn"
+                  hint:@"同一 Wi-Fi 下 47377 端口需要放通"];
+}
+
+- (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)section
+{
+    return MAX(1, (NSInteger)self.items.count);
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tv cellForRowAtIndexPath:(NSIndexPath *)ip
+{
+    static NSString *cid = @"manual";
+    UITableViewCell *cell = [tv dequeueReusableCellWithIdentifier:cid];
+    if (!cell) {
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:cid];
+        cell.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.06];
+        cell.textLabel.textColor = UIColor.whiteColor;
+        cell.detailTextLabel.textColor = KSThemeTextSecondary();
+        cell.imageView.image = [UIImage systemImageNamed:@"desktopcomputer"];
+    }
+    if (self.items.count == 0) {
+        cell.textLabel.text = @"还没有手动添加的设备";
+        cell.detailTextLabel.text = @"点右上角 ＋ 添加 IP 地址";
+        cell.accessoryType = UITableViewCellAccessoryNone;
+        return cell;
+    }
+    NSDictionary *item = self.items[ip.row];
+    cell.textLabel.text = item[@"name"] ?: item[@"did"];
+    cell.detailTextLabel.text = [NSString stringWithFormat:@"%@:%@",
+                                 item[@"host"] ?: @"—", item[@"port"] ?: @47377];
+    cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+    return cell;
+}
+
+- (void)tableView:(UITableView *)tv didSelectRowAtIndexPath:(NSIndexPath *)ip
+{
+    [tv deselectRowAtIndexPath:ip animated:YES];
+    if (ip.row >= (NSInteger)self.items.count) return;
+    NSDictionary *item = self.items[ip.row];
+    KSDevice *d = [[KSDevice alloc] init];
+    d.deviceId = item[@"did"] ?: @"";
+    d.name = item[@"name"] ?: d.deviceId;
+    d.host = item[@"host"] ?: @"";
+    d.port = (uint16_t)[item[@"port"] integerValue];
+    d.kind = KSDeviceKindWindows;
+    [[KSServer shared] addPeer:d];
+    [self connectDevice:d];
+}
+
+- (UISwipeActionsConfiguration *)tableView:(UITableView *)tv
+    trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)ip
+{
+    if (ip.row >= (NSInteger)self.items.count) return nil;
+    NSDictionary *item = self.items[ip.row];
+    __weak typeof(self) weakSelf = self;
+    UIContextualAction *del = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive
+                                                                      title:@"删除"
+                                                                    handler:^(UIContextualAction *a, UIView *v, void (^done)(BOOL)) {
+        [KSConfig.shared forgetDeviceWithId:item[@"did"] ?: @""];
+        [weakSelf reload];
+        done(YES);
+    }];
+    return [UISwipeActionsConfiguration configurationWithActions:@[del]];
 }
 
 @end

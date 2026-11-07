@@ -77,6 +77,18 @@ NSString *KSSHA256HexOfData(NSData *data)
     return [NSString stringWithUTF8String:hex];
 }
 
+NSString *KSTokenFor(NSString *didA, NSString *nonceA, NSString *didB, NSString *nonceB)
+{
+    NSMutableData *d = [NSMutableData data];
+    [d appendBytes:"KS1-CTL\0" length:8];
+    [d appendData:[(didA ?: @"") dataUsingEncoding:NSUTF8StringEncoding]];
+    [d appendData:[(nonceA ?: @"") dataUsingEncoding:NSUTF8StringEncoding]];
+    [d appendData:[(didB ?: @"") dataUsingEncoding:NSUTF8StringEncoding]];
+    [d appendData:[(nonceB ?: @"") dataUsingEncoding:NSUTF8StringEncoding]];
+    NSString *hex = KSSHA256HexOfData(d);
+    return [hex substringToIndex:16];
+}
+
 NSString *KSSHA256HexOfFile(NSString *path, NSError **error)
 {
     CC_SHA256_CTX ctx;

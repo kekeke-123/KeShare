@@ -70,6 +70,7 @@ typedef NS_ENUM(NSInteger, KSTransferDirection) {
 typedef NS_ENUM(NSInteger, KSTransferState) {
     KSTransferStateWaiting = 0,
     KSTransferStateRunning,
+    KSTransferStatePaused,
     KSTransferStateVerifying,
     KSTransferStateDone,
     KSTransferStateFailed
@@ -85,8 +86,33 @@ typedef NS_ENUM(NSInteger, KSTransferState) {
 @property (nonatomic, assign) unsigned long long done;
 @property (nonatomic, assign) unsigned long long total;
 @property (nonatomic, copy, nullable) NSString *errorText;
+@property (nonatomic, assign) double speedBps;                  // 瞬时速度（字节/秒）
+@property (nonatomic, strong, nullable) NSDate *startedAt;
+@property (nonatomic, copy, nullable) NSString *expectedHash;   // 对端声明的 SHA-256
+@property (nonatomic, assign) BOOL verified;                    // 校验已通过
+@property (nonatomic, assign, readonly) BOOL paused;
+@property (nonatomic, assign, readonly) BOOL cancelled;
 - (double)progress;
 - (NSString *)stateLabel;
+- (NSString *)speedLabel;
+/// 暂停 / 继续 / 取消：数据循环每写完一帧调用 -checkpoint
+- (void)pause;
+- (void)resume;
+- (void)cancel;
+/// YES = 可以继续；NO = 已被取消。暂停时在此阻塞（0.1 秒粒度）。
+- (BOOL)checkpoint;
+@end
+
+/// 全局传输记录（收、发都登记，列表页与详情页都从这里读）
+@interface KSTransferCenter : NSObject
+@property (class, nonatomic, readonly) KSTransferCenter *shared;
+@property (nonatomic, readonly) NSArray<KSTransfer *> *transfers;
+- (void)track:(KSTransfer *)transfer;
+- (nullable KSTransfer *)transferWithId:(NSString *)tid;
+- (BOOL)pauseWithId:(NSString *)tid;
+- (BOOL)resumeWithId:(NSString *)tid;
+- (BOOL)cancelWithId:(NSString *)tid;
+- (void)clearFinished;
 @end
 
 #pragma mark - 配置（settings.json）
@@ -191,6 +217,11 @@ typedef NS_ENUM(NSInteger, KSTransferState) {
 - (void)downloadPath:(NSString *)path;
 - (void)uploadFileAtPath:(NSString *)localPath;
 - (void)sendClipboardText:(NSString *)text;
+/// 暂停 / 继续 / 取消某个传输（转发到 KSTransferCenter）
+- (BOOL)pauseTransferWithId:(NSString *)transferId;
+- (BOOL)resumeTransferWithId:(NSString *)transferId;
+- (BOOL)cancelTransferWithId:(NSString *)transferId;
+@property (nonatomic, readonly) NSArray<KSTransfer *> *transfers;
 - (void)close;
 @end
 
@@ -245,6 +276,15 @@ NSString *KSKindNameForDevice(KSDeviceKind kind);
 @end
 
 @interface KSTransfersViewController : KSViewController
+@end
+
+/// 手动连接（设备 tab）：保存的 IP 列表 + 添加设备
+@interface KSManualDevicesViewController : KSViewController
+@end
+
+/// 传输任务详情（进度 / 速度 / 校验 / 暂停 / 取消）
+@interface KSTransferDetailViewController : KSViewController
+@property (nonatomic, strong) KSTransfer *transfer;
 @end
 
 @interface KSSettingsViewController : KSViewController

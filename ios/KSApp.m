@@ -309,7 +309,7 @@ static void KSHandleUncaughtException(NSException *exception)
     NSArray *make = @[
         @[@"KSDevicesViewController", @"附近设备", @"antenna.radiowaves.left.and.right"],
         @[@"KSFilesViewController", @"文件", @"folder"],
-        @[@"KSTransfersViewController", @"传输", @"arrow.up.arrow.down"],
+        @[@"KSManualDevicesViewController", @"设备", @"desktopcomputer"],
         @[@"KSSettingsViewController", @"设置", @"gearshape"]
     ];
     NSMutableArray *vcs = [NSMutableArray array];

@@ -23,6 +23,8 @@ PAGE_TITLES = {
     "transfers": "传输任务",
     "settings": "设置",
     "about": "关于",
+    "setting_detail": "设置项",
+    "transfer_detail": "任务详情",
 }
 
 SIDEBAR_ITEMS = [
@@ -107,11 +109,15 @@ class HazeUI(object):
         self.sidebar.w = 232
         self.show_haze_page(self._current_page or "devices")
 
-    def show_haze_page(self, key):
-        """切换页面：清掉旧的页面控件，重建当前页。"""
+    def show_haze_page(self, key, param=None):
+        """切换页面：清掉旧的页面控件，重建当前页。
+
+        param 用于二级页（如设置项 key、传输任务 id）。
+        """
         if key not in PAGE_TITLES:
             return
         self._current_page = key
+        self._page_param = param
         try:
             self.sidebar.set_selected(SIDEBAR_KEYS.index(key), notify=False)
             self.sidebar.hover = -1          # 清掉 hover，避免与选中项同时高亮
@@ -122,6 +128,10 @@ class HazeUI(object):
             try:
                 self.roots.remove(w)
             except ValueError:
+                pass
+            try:
+                w.destroy()
+            except Exception:
                 pass
         self._page_widgets = []
 
@@ -436,7 +446,7 @@ class HazeUI(object):
             subtitle=self._haze_transfer_summary(),
         )
         widgets += self._page_list(
-            self._haze_transfer_rows(), on_select=None,
+            self._haze_transfer_rows(), on_select=self._haze_transfer_selected,
             empty_text="没有传输任务",
             empty_hint="从「文件」页推送文件，或在「设备」页接收对端推送",
             on_context=self._haze_transfer_context)
@@ -461,8 +471,14 @@ class HazeUI(object):
                 "right": t.get("state") or "",
                 "progress": (done / total) if total else 0.0,
                 "_tid": t.get("id") or t.get("tid"),
+                "_paused": bool(t.get("paused")),
             })
         return rows
+
+    def _haze_transfer_selected(self, index, row):
+        tid = (row or {}).get("_tid")
+        if tid:
+            self.show_haze_page("transfer_detail", tid)
 
     def _haze_transfer_context(self, index, row, px, py):
         """传输行右键：取消这个任务 / 复制文件名 / 打开所在目录。"""
@@ -485,9 +501,31 @@ class HazeUI(object):
             except Exception as exc:
                 self.toast.show("复制失败", str(exc), "error")
 
+        def open_detail():
+            self.show_haze_page("transfer_detail", tid)
+
+        def toggle_pause():
+            try:
+                t = self.registry.get(tid)
+                if t is None:
+                    return
+                if getattr(t, "paused", False):
+                    self.registry.resume(tid)
+                    self.toast.show("已继续", name, "ok")
+                else:
+                    self.registry.pause(tid)
+                    self.toast.show("已暂停", name, "warn")
+                self.show_haze_page("transfers")
+            except Exception as exc:
+                self.toast.show("操作失败", str(exc), "error")
+
         items = [("复制文件名", copy_name)]
         if tid:
-            items = [("取消这个任务", cancel_one)] + items
+            pause_label = "继续" if (row or {}).get("_paused") else "暂停"
+            items = [("查看详情", open_detail),
+                     (pause_label, toggle_pause),
+                     "‑",
+                     ("取消这个任务", cancel_one)] + items
         self._popup_menu(px, py, items)
 
     def _haze_transfer_summary(self):
@@ -534,14 +572,185 @@ class HazeUI(object):
         title = (row or {}).get("title") if isinstance(row, dict) else ""
         if title == "接收目录":
             self._open_share_folder()
-        elif title == "用户协议与隐私政策":
+            return
+        if title == "用户协议与隐私政策":
             try:
                 from .legal import present_if_needed
                 present_if_needed(self)
             except Exception:
                 self.toast.show("法律条款暂不可用", "", "warn")
+            return
+        self.show_haze_page("setting_detail", title)
+
+    # ---------------------------------------------------------------- 设置子页
+    # 字段定义：(显示名, config 路径, 类型, 提示)
+    SETTING_FIELDS = {
+        "设备名称": (("device", "name"), "str", "对端看到的名字"),
+        "端口": (("network", "port"), "int", "默认 47377"),
+        "分块大小": (("share", "chunk_kb"), "int", "单位 KB，默认 1024"),
+        "并发": (("share", "concurrency"), "int", "同时传输的任务数"),
+        "自动接受": (("share", "auto_accept"), "bool", "对端推送时不询问"),
+        "断点保留": (("share", "resume_keep_days"), "int", "天，0 表示永不清理"),
+    }
+
+    def _setting_get(self, path):
+        node = self.config_obj.data
+        for key in path:
+            node = node.get(key, {}) if isinstance(node, dict) else {}
+        return node
+
+    def _setting_set(self, path, value):
+        node = self.config_obj.data
+        for key in path[:-1]:
+            node = node.setdefault(key, {})
+        node[path[-1]] = value
+
+    def _page_setting_detail(self):
+        title = self._page_param or ""
+        spec = self.SETTING_FIELDS.get(title)
+        x, y, w, h = self._content_rect()
+        widgets = [G.GlassPanel(self, (x, y, w, 102), radius=28, solid_alpha=200)]
+        widgets.append(G.GlassLabel(self, (x + 26, y + 22, w - 260, 32), title or "设置项",
+                                    21, G.GlassTheme.fg, True))
+        widgets.append(G.GlassButton(self, (x + w - 130, y + 30, 108, 42), "返回",
+                                     lambda: self.show_haze_page("settings")))
+
+        if spec is None:
+            widgets.append(G.GlassPanel(self, (x, y + 126, w, 180), radius=28, solid_alpha=210))
+            widgets.append(G.GlassLabel(self, (x + 26, y + 160, w - 52, 24),
+                                        "该项暂不支持在这里编辑", 14, G.GlassTheme.muted))
+            return widgets
+
+        path, kind, hint = spec
+        cur = self._setting_get(path)
+
+        panel_top = y + 126
+        widgets.append(G.GlassPanel(self, (x, panel_top, w, 230), radius=28, solid_alpha=210))
+        widgets.append(G.GlassLabel(self, (x + 26, panel_top + 22, w - 52, 22),
+                                    hint, 11, G.GlassTheme.muted))
+
+        if kind == "bool":
+            def toggle():
+                new = not bool(self._setting_get(path))
+                self._setting_set(path, new)
+                self._save_settings()
+                self.toast.show("已保存", "%s：%s" % (title, "开" if new else "关"), "ok")
+                self.show_haze_page("setting_detail", title)
+
+            label = "当前：%s → 点击切换" % ("开" if cur else "关")
+            widgets.append(G.GlassButton(self, (x + 26, panel_top + 62, 240, 44),
+                                         label, toggle, accent=bool(cur)))
         else:
-            self.toast.show("该项在设置面板里编辑", title, "info")
+            widgets.append(G.GlassInput(self, (x + 26, panel_top + 58, min(420, w - 52), 40),
+                                        value=str(cur if cur is not None else ""),
+                                        placeholder=hint))
+            holder = {}
+
+            def save():
+                raw = holder["input"].text() if "input" in holder else ""
+                try:
+                    value = int(raw) if kind == "int" else str(raw).strip()
+                except (TypeError, ValueError):
+                    self.toast.show("保存失败", "请输入数字", "error")
+                    return
+                if kind == "int" and value < 0:
+                    self.toast.show("保存失败", "不能为负数", "error")
+                    return
+                self._setting_set(path, value)
+                self._save_settings()
+                self.toast.show("已保存", "%s：%s" % (title, value), "ok")
+                self.show_haze_page("setting_detail", title)
+
+            btn = G.GlassButton(self, (x + 26, panel_top + 116, 120, 42), "保存", save,
+                                accent=True)
+            widgets.append(btn)
+            # 把输入框引用挂到按钮上，供 save 读取
+            inp = widgets[-2]
+            if isinstance(inp, G.GlassInput):
+                holder["input"] = inp
+
+        widgets.append(G.GlassLabel(self, (x + 26, panel_top + 176, w - 52, 20),
+                                    "配置保存在 settings.json，重启后仍然生效", 10,
+                                    G.GlassTheme.muted))
+        return widgets
+
+    def _save_settings(self):
+        try:
+            self.config_obj.save()
+        except Exception as exc:
+            self.toast.show("保存到磁盘失败", str(exc), "error")
+
+    # ---------------------------------------------------------------- 传输详情页
+    def _page_transfer_detail(self):
+        tid = self._page_param
+        x, y, w, h = self._content_rect()
+        info = {}
+        try:
+            t = self.registry.get(tid)
+            if t is not None:
+                info = t.to_dict()
+        except Exception:
+            info = {}
+
+        name = info.get("name") or "未知任务"
+        widgets = [G.GlassPanel(self, (x, y, w, 102), radius=28, solid_alpha=200)]
+        short = name[:40] + ("…" if len(name) > 40 else "")
+        widgets.append(G.GlassLabel(self, (x + 26, y + 22, w - 260, 32), short,
+                                    21, G.GlassTheme.fg, True))
+        widgets.append(G.GlassButton(self, (x + w - 130, y + 30, 108, 42), "返回",
+                                     lambda: self.show_haze_page("transfers")))
+
+        done = int(info.get("done") or info.get("received") or 0)
+        total = int(info.get("size") or 0)
+        ratio = (done / total) if total else 0.0
+        state = info.get("state") or ("暂停" if info.get("paused") else "进行中")
+
+        rows = [
+            {"glyph": "transfer", "title": "方向",
+             "subtitle": "接收" if info.get("direction") == "in" else "发送", "right": ""},
+            {"glyph": "transfer", "title": "进度",
+             "subtitle": "%s / %s（%.1f%%）" % (G.human_size(done), G.human_size(total),
+                                               ratio * 100), "right": state},
+            {"glyph": "transfer", "title": "状态", "subtitle": state, "right": ""},
+            {"glyph": "files", "title": "保存位置", "subtitle": info.get("path") or "—",
+             "right": ""},
+        ]
+        widgets += self._page_list(rows, empty_text="任务不存在",
+                                   empty_hint="可能已完成并被清理")
+
+        # 底部操作：暂停/继续、取消
+        pan_top = y + h - 96
+        widgets.append(G.GlassPanel(self, (x, pan_top, w, 76), radius=32, solid_alpha=220))
+        action = "继续" if info.get("paused") else "暂停"
+
+        def toggle_pause():
+            try:
+                if info.get("paused"):
+                    self.registry.resume(tid)
+                    self.toast.show("已继续", name, "ok")
+                else:
+                    self.registry.pause(tid)
+                    self.toast.show("已暂停", name, "warn")
+            except Exception as exc:
+                self.toast.show("操作失败", str(exc), "error")
+            self.show_haze_page("transfer_detail", tid)
+
+        def cancel_one():
+            from tkinter import messagebox
+            if not messagebox.askyesno("确认取消", "取消「%s」？" % name, parent=self):
+                return
+            try:
+                self.registry.cancel(tid)
+                self.toast.show("已取消", name, "warn")
+            except Exception as exc:
+                self.toast.show("取消失败", str(exc), "error")
+            self.show_haze_page("transfers")
+
+        widgets.append(G.GlassButton(self, (x + 24, pan_top + 16, 110, 44), action,
+                                     toggle_pause))
+        widgets.append(G.GlassButton(self, (x + 146, pan_top + 16, 110, 44), "取消任务",
+                                     cancel_one))
+        return widgets
 
     # ---------------------------------------------------------------- 关于页
     def _page_about(self):

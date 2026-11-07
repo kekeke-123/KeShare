@@ -120,7 +120,22 @@ NSString *KSIPv4StringLocal(void);
 @property (nonatomic, assign) unsigned long long totalSize;
 @property (nonatomic, assign) unsigned long long done;
 @property (nonatomic, strong, nullable) KSTransfer *publicTransfer;
+/// 触发本次传输的控制链路：发完数据后要在这条链路上声明摘要（不能写到别的连接上）
+@property (nonatomic, strong, nullable) id<KSControlLink> requestLink;
 @end
+
+#pragma mark - 服务端控制链路（accepted socket 上的一条 CTL 会话）
+
+/// KSServer 侧每条 accepted 控制连接对应一个这样的对象：回包必须写回同一 socket
+@protocol KSServerControlLink <KSControlLink>
+@property (nonatomic, copy) NSString *nonce;             // 本端在这次握手里的 nonce
+@property (nonatomic, copy, nullable) NSString *peerDid;
+@property (nonatomic, copy, nullable) NSString *remoteIp;
+@end
+
+/// token = hex(SHA-256("KS1-CTL\0" + did_A + nonce_A + did_B + nonce_B))[:16]
+/// A 永远是握手的发起方。
+NSString *KSTokenFor(NSString *didA, NSString *nonceA, NSString *didB, NSString *nonceB);
 
 @interface KSDataRegistry : NSObject
 @property (class, nonatomic, readonly) KSDataRegistry *shared;
@@ -135,6 +150,7 @@ NSString *KSIPv4StringLocal(void);
 - (void)addPeer:(KSDevice *)peer;
 - (void)serveTransfer:(KSPendingTransfer *)pt onSocket:(int)fd;
 - (void)handleGetRequest:(NSDictionary *)msg link:(id<KSControlLink>)link;
+- (void)handleListRequest:(NSDictionary *)msg link:(id<KSControlLink>)link;
 - (void)handlePutOffer:(NSDictionary *)msg link:(id<KSControlLink>)link;
 - (void)handleHashAck:(NSDictionary *)msg;
 @end
@@ -147,6 +163,7 @@ NSString *KSIPv4StringLocal(void);
              transferId:(NSString *)tid
                    size:(unsigned long long)size
             destination:(NSString *)dest
+               transfer:(nullable KSTransfer *)transfer
              onProgress:(nullable void (^)(unsigned long long done))progress
              completion:(void (^)(NSString *_Nullable tempPath, NSString *_Nullable error))completion;
 @end
