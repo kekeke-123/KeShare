@@ -1127,8 +1127,37 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls
     KSSession *session = [[KSSession alloc] initWithPeer:d];
     [session startAsInitiator:YES];
     [[KSServer shared].sessions setObject:session forKey:d.deviceId ?: @""];
-    [self ks_showError:[NSString stringWithFormat:@"正在连接 %@", d.name] code:@"Conn"
-                  hint:@"同一 Wi-Fi 下 47377 端口需要放通"];
+    [[KSLog shared] info:@"手动连接 %@ (%@:%u)", d.name, d.host, d.port];
+    [self showHint:[NSString stringWithFormat:@"正在连接 %@ …", d.name]];
+}
+
+- (void)showHint:(NSString *)text
+{
+    static NSInteger tag = 9210;
+    [[self.view viewWithTag:tag] removeFromSuperview];
+    UILabel *label = [[UILabel alloc] initWithFrame:CGRectZero];
+    label.tag = tag;
+    label.text = text;
+    label.textAlignment = NSTextAlignmentCenter;
+    label.textColor = UIColor.whiteColor;
+    label.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
+    label.backgroundColor = [UIColor colorWithWhite:0.1 alpha:0.92];
+    label.layer.cornerRadius = 16;
+    label.layer.cornerCurve = kCACornerCurveContinuous;
+    label.clipsToBounds = YES;
+    label.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:label];
+    [NSLayoutConstraint activateConstraints:@[
+        [label.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
+        [label.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor constant:-24],
+        [label.widthAnchor constraintEqualToConstant:260],
+        [label.heightAnchor constraintEqualToConstant:36],
+    ]];
+    [UIView animateWithDuration:0.3 delay:2.2 options:0 animations:^{
+        label.alpha = 0;
+    } completion:^(BOOL done) {
+        [label removeFromSuperview];
+    }];
 }
 
 - (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)section
