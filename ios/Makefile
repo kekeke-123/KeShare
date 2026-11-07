@@ -59,7 +59,7 @@ app: $(APP_DIR)/$(APP) $(EXT_DIR)/$(EXT)
 
 $(APP_DIR)/$(APP): $(OBJ) Info.plist
 	@mkdir -p $(APP_DIR)
-	$(SWIFTC) $(SWIFTFLAGS) -emit-object -o $(OUT)/KSActivityManager.o $(SRC_SWIFT)
+	$(SWIFTC) $(SWIFTFLAGS) -emit-object -o $(OUT)/KSActivityManager.o $(SRC_SWIFT) Widget/KeShareActivityAttributes.swift
 	# 用 swiftc 作为链接驱动：它会自动带上 Swift 运行时与 rpath
 	$(SWIFTC) -target $(TARGET) -sdk $(SDK) -O \
 		$(OBJ) $(OUT)/KSActivityManager.o \

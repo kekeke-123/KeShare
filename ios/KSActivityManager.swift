@@ -68,7 +68,7 @@ public final class KSActivityManager: NSObject {
         let total = currentTotal
         let state = KeShareActivityAttributes.ContentState(
             progress: success ? 1.0 : 0.0,
-            done: success ? total : 0,
+            done: success ? total : UInt64(0),
             total: total,
             detail: message,
             finished: true,
