@@ -447,16 +447,18 @@ class HazeUI(object):
         self._popup_menu(px, py, items)
 
     def _haze_push_path(self, rel_path, remote_name=None):
-        """把文件推给已连接设备；没有连接则提示。"""
+        """把文件推给已连接设备；返回是否真的发出去了。"""
         client = getattr(self, "_client", None)
         if client is None or not getattr(client, "connected", lambda: False)():
             self.toast.show("还没有连接设备", "先在「设备」页选一台", "warn")
-            return
+            return False
         try:
             self._push_path(rel_path, remote_name=remote_name)
             self.toast.show("已发送", (remote_name or rel_path).rsplit("/", 1)[-1], "ok")
+            return True
         except Exception as exc:
             self.toast.show("发送失败", str(exc), "error")
+            return False
 
     def _haze_import_and_send(self):
         try:
@@ -468,10 +470,18 @@ class HazeUI(object):
 
     # ---------------------------------------------------------------- 传输页
     def _page_transfers(self):
+        # 有活动任务才给「全部暂停 / 全部取消」，否则按钮只会误导
+        try:
+            active = [x for x in self.registry.items() if not x.done]
+        except Exception:
+            active = []
+        actions = []
+        if active:
+            actions = [("全部暂停", self._haze_pause_all, False),
+                       ("全部取消", self._haze_cancel_all, False)]
         widgets = self._page_header(
             "传输任务",
-            actions=[("全部暂停", self._haze_pause_all, False),
-                     ("全部取消", self._haze_cancel_all, False)],
+            actions=actions,
             subtitle=self._haze_transfer_summary(),
         )
         widgets += self._page_list(
@@ -821,20 +831,12 @@ class HazeUI(object):
             if "/" in new_name or "\\" in new_name or new_name in (".", ".."):
                 self.toast.show("文件名非法", "不要包含路径分隔符", "error")
                 return
-            try:
-                self._haze_push_path(rel, remote_name=new_name)
-                self.toast.show("已发送", new_name, "ok")
+            if self._haze_push_path(rel, remote_name=new_name):
                 self.show_haze_page("files")
-            except Exception as exc:
-                self.toast.show("发送失败", str(exc), "error")
 
         def keep_original():
-            try:
-                self._haze_push_path(rel)
-                self.toast.show("已发送", original, "ok")
+            if self._haze_push_path(rel):
                 self.show_haze_page("files")
-            except Exception as exc:
-                self.toast.show("发送失败", str(exc), "error")
 
         widgets.append(G.GlassButton(self, (x + 26, panel_top + 132, 132, 44),
                                      "用新名字发送", do_send, accent=True))

@@ -270,10 +270,16 @@
     NSArray<KSDevice *> *peers = [KSServer shared].peers;
     if (ip.row >= (NSInteger)peers.count) return;
     KSDevice *d = peers[ip.row];
-    self.session = [[KSSession alloc] initWithPeer:d];
-    self.session.delegate = self;
-    [self.session startAsInitiator:YES];
-    if (d.deviceId.length) [[KSServer shared].sessions setObject:self.session forKey:d.deviceId];
+    // 复用已有会话，避免重复点同一设备时堆出多条控制链路
+    KSSession *existing = d.deviceId.length ? [KSServer shared].sessions[d.deviceId] : nil;
+    if (existing && existing.link.isOpen) {
+        self.session = existing;
+    } else {
+        self.session = [[KSSession alloc] initWithPeer:d];
+        self.session.delegate = self;
+        [self.session startAsInitiator:YES];
+        if (d.deviceId.length) [[KSServer shared].sessions setObject:self.session forKey:d.deviceId];
+    }
     [[KSLog shared] info:@"正在连接 %@", d.name];
     [self showStatus:[NSString stringWithFormat:@"002 正在握手 %@…", d.name]];
 
@@ -465,6 +471,15 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls
     NSArray<KSSession *> *peers = [self connectedSessions];
     if (peers.count == 0) {
         [self filesToast:@"还没有已连接的设备"];
+        return;
+    }
+    if (peers.count == 1) {
+        // 只有一台设备就别多弹一次，直接发
+        KSSession *only = peers.firstObject;
+        [only uploadFileAtPath:path asName:name];
+        [self filesToast:name.length
+            ? [NSString stringWithFormat:@"已发送：%@ → %@", name, only.peer.name ?: @"设备"]
+            : @"已加入发送队列"];
         return;
     }
     UIAlertController *sheet = [UIAlertController alertControllerWithTitle:
