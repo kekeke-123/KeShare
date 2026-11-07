@@ -91,6 +91,8 @@ def main(argv=None):
         return 0
 
     try:
+        from keshare.ui import glass as ksglass
+        ksglass.enable_dpi_awareness()   # 必须在 Tk() 之前
         from keshare.ui.app import KeShareApp
     except Exception as exc:
         logger.error("无法加载界面（tkinter 不可用？）: %s" % (exc,))
