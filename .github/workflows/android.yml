@@ -29,6 +29,7 @@ jobs:
 
       - name: 构建 Debug APK
         run: |
+          set -o pipefail
           cd android
           gradle assembleDebug --no-daemon --stacktrace 2>&1 | tee /tmp/build.log
 
@@ -62,4 +63,6 @@ jobs:
 
       - name: 失败时归档日志
         if: failure()
-        run: tail -120 /tmp/build.log || true
+        run: |
+          echo "=== 构建日志关键行 ==="
+          grep -n -E "error:|FAILURE|What went wrong|Caused by|> " /tmp/build.log | tail -60 || true
