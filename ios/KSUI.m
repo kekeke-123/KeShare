@@ -591,6 +591,49 @@
     return [self cellWithTitle:@"开发者选项" detail:@"" switchOn:NO];
 }
 
+- (void)promptDeveloperPassword
+{
+    UIAlertController *al = [UIAlertController
+        alertControllerWithTitle:@"需要开发者密码"
+                         message:@"密码包含大小写字母、数字与符号"
+                  preferredStyle:UIAlertControllerStyleAlert];
+    [al addTextFieldWithConfigurationHandler:^(UITextField *tf) {
+        tf.placeholder = @"开发者密码";
+        tf.secureTextEntry = YES;
+        tf.autocapitalizationType = UITextAutocapitalizationTypeNone;
+        tf.autocorrectionType = UITextAutocorrectionTypeNo;
+    }];
+    [al addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    __weak typeof(self) weakSelf = self;
+    [al addAction:[UIAlertAction actionWithTitle:@"解锁" style:UIAlertActionStyleDefault
+                                          handler:^(UIAlertAction *action) {
+        NSString *input = al.textFields.firstObject.text ?: @"";
+        if (![KSDevGate verifyPassword:input]) {
+            UINotificationFeedbackGenerator *h = [[UINotificationFeedbackGenerator alloc] init];
+            [h notificationOccurred:UINotificationFeedbackTypeError];
+            [[KSLog shared] warn:@"开发者密码不正确"];
+            UIAlertController *bad = [UIAlertController alertControllerWithTitle:@"密码不正确"
+                                                                        message:@"请重新连点版本号再试"
+                                                                 preferredStyle:UIAlertControllerStyleAlert];
+            [bad addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];
+            [weakSelf presentViewController:bad animated:YES completion:nil];
+            return;
+        }
+        KSConfig.shared.developerUnlocked = YES;
+        [KSConfig.shared save];
+        [[KSLog shared] info:@"开发者模式已解锁"];
+        UINotificationFeedbackGenerator *h = [[UINotificationFeedbackGenerator alloc] init];
+        [h notificationOccurred:UINotificationFeedbackTypeSuccess];
+        [weakSelf.table reloadData];
+        UIAlertController *ok = [UIAlertController alertControllerWithTitle:@"开发者模式已开启"
+                                                                   message:@"设置页底部新增“开发者选项”"
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+        [ok addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];
+        [weakSelf presentViewController:ok animated:YES completion:nil];
+    }]];
+    [self presentViewController:al animated:YES completion:nil];
+}
+
 - (void)tapVersion
 {
     self.tapCount++;
@@ -598,18 +641,8 @@
     self.tapTimer = [NSTimer scheduledTimerWithTimeInterval:3.0 target:self
                                                    selector:@selector(resetTaps) userInfo:nil repeats:NO];
     if (self.tapCount >= 8) {
-        KSConfig.shared.developerUnlocked = YES;
-        [KSConfig.shared save];
         self.tapCount = 0;
-        [[KSLog shared] info:@"开发者模式已解锁"];
-        UINotificationFeedbackGenerator *h = [[UINotificationFeedbackGenerator alloc] init];
-        [h notificationOccurred:UINotificationFeedbackTypeSuccess];
-        [self.table reloadData];
-        UIAlertController *al = [UIAlertController alertControllerWithTitle:@"开发者模式已开启"
-                                                                  message:@"设置页底部新增“开发者选项”"
-                                                           preferredStyle:UIAlertControllerStyleAlert];
-        [al addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];
-        [self presentViewController:al animated:YES completion:nil];
+        [self promptDeveloperPassword];
     } else if (self.tapCount >= 4) {
         NSInteger left = 8 - self.tapCount;
         [self showToast:[NSString stringWithFormat:@"再点 %ld 次进入开发者模式", (long)left]];

@@ -246,6 +246,15 @@ NSString *KSKindNameForDevice(KSDeviceKind kind);
 @interface KSDeveloperViewController : KSViewController
 @end
 
+#pragma mark - 开发者模式门禁
+
+@interface KSDevGate : NSObject
+/// 解密后的开发者密码（仅用于内部校验，不要在 UI 上显示）
++ (NSString *)decryptedPassword;
+/// 校验用户输入
++ (BOOL)verifyPassword:(NSString *)candidate;
+@end
+
 #pragma mark - 热点 / Wi-Fi
 
 @interface KSWiFi : NSObject

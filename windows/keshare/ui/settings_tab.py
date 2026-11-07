@@ -267,6 +267,7 @@ class SettingsTab(ttk.Frame):
         self.hint_var.set("")
 
     def _unlock(self):
+        """8 连击后：先验证开发者密码，通过才真正解锁。"""
         self._taps = 0
         if self._reset_job is not None:
             try:
@@ -274,6 +275,63 @@ class SettingsTab(ttk.Frame):
             except Exception:
                 pass
             self._reset_job = None
+
+        from .. import devmode
+        from .theme import PillButton
+
+        dialog = tk.Toplevel(self)
+        dialog.title("开发者模式")
+        dialog.transient(self.winfo_toplevel())
+        dialog.resizable(False, False)
+        dialog.configure(bg=palette["bg"])
+        frame = ttk.Frame(dialog, padding=18)
+        frame.pack(fill="both", expand=True)
+
+        ttk.Label(frame, text="需要开发者密码",
+                  font=("Microsoft YaHei UI", 12, "bold")).pack(anchor="w")
+        ttk.Label(frame, text="密码包含大小写字母、数字与符号",
+                  foreground="#888888").pack(anchor="w", pady=(4, 10))
+
+        password_var = tk.StringVar()
+        entry = ttk.Entry(frame, textvariable=password_var, show="•", width=34)
+        entry.pack(fill="x")
+        entry.focus_set()
+
+        error_var = tk.StringVar(value="")
+        ttk.Label(frame, textvariable=error_var, foreground="#d9534f").pack(anchor="w", pady=(6, 0))
+        self._dev_attempts = getattr(self, "_dev_attempts", 0)
+
+        def submit(event=None):
+            if devmode.verify(password_var.get()):
+                dialog.destroy()
+                self._grant_developer()
+                return
+            self._dev_attempts += 1
+            password_var.set("")
+            if self._dev_attempts >= 5:
+                dialog.destroy()
+                self.hint_var.set("尝试次数过多，请重新连点")
+                self.log.warn("开发者密码连续错误，已退出解锁流程")
+                self._dev_attempts = 0
+                return
+            error_var.set("密码不正确（还可尝试 %d 次）" % (5 - self._dev_attempts,))
+
+        entry.bind("<Return>", submit)
+
+        buttons = ttk.Frame(frame)
+        buttons.pack(fill="x", pady=(12, 0))
+        ok = PillButton(buttons, self.palette if hasattr(self, "palette") else None,
+                        "解锁", kind="primary")
+        ok.command = submit
+        ok.pack(side="left")
+        cancel = PillButton(buttons, self.palette if hasattr(self, "palette") else None,
+                            "取消", kind="ghost")
+        cancel.command = dialog.destroy
+        cancel.pack(side="left", padx=8)
+        dialog.grab_set()
+
+    def _grant_developer(self):
+        self._dev_attempts = 0
         self.config.set("developer.unlocked", True)
         try:
             self.config.save()
@@ -282,4 +340,6 @@ class SettingsTab(ttk.Frame):
         self.hint_var.set("开发者模式已解锁")
         self.log.info("开发者模式已解锁")
         if self.on_unlock_dev is not None:
+            self.on_unlock_dev()
+
             self.on_unlock_dev()
