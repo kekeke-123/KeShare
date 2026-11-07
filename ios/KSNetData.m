@@ -116,6 +116,7 @@
 
     [self publishBonjour];
     [self startControlChannel];
+    KSDiscoveryStart();
 
     dispatch_async(self.netQ, ^{
         while (self.listenFd >= 0) {
@@ -138,6 +139,7 @@
     }
     [self.netService stop];
     self.netService = nil;
+    KSDiscoveryStop();
 }
 
 - (void)restart

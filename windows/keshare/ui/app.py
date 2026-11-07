@@ -187,6 +187,7 @@ class KeShareApp(tk.Tk):
         ttk.Button(bar, text="刷新", command=self._refresh_devices_clicked).pack(side="left")
         ttk.Button(bar, text="连接", command=self._connect_selected).pack(side="left", padx=6)
         ttk.Button(bar, text="断开", command=self._disconnect).pack(side="left")
+        ttk.Button(bar, text="手动连接…", command=self._manual_connect).pack(side="left", padx=6)
         self.device_hint = tk.StringVar(value="双击设备或点击“连接”建立控制通道")
         ttk.Label(bar, textvariable=self.device_hint,
                   foreground=self.palette["muted"]).pack(side="left", padx=12)
@@ -383,6 +384,42 @@ class KeShareApp(tk.Tk):
             return None
         return self._device_peers.get(did)
 
+    def _manual_connect(self):
+        """手动输入 IP 连接：蓝牙/UDP 发现不到时使用（如手机热点场景）。"""
+        dialog = tk.Toplevel(self)
+        dialog.title("手动连接")
+        dialog.transient(self)
+        dialog.resizable(False, False)
+        frame = ttk.Frame(dialog, padding=14)
+        frame.pack(fill="both", expand=True)
+        ttk.Label(frame, text="对方 IP 地址").grid(row=0, column=0, sticky="w")
+        ip_var = tk.StringVar(value="172.20.10.1")
+        ttk.Entry(frame, textvariable=ip_var, width=24).grid(row=0, column=1, padx=8, pady=4)
+        ttk.Label(frame, text="端口").grid(row=1, column=0, sticky="w")
+        port_var = tk.StringVar(value=str(protocol.KS_PORT))
+        ttk.Entry(frame, textvariable=port_var, width=10).grid(row=1, column=1, sticky="w", padx=8, pady=4)
+        ttk.Label(frame,
+                  text="手机开热点时，Windows 连上该热点，对方 IP 通常是 172.20.10.1",
+                  foreground=self.palette["muted"], justify="left").grid(
+            row=2, column=0, columnspan=2, pady=(6, 8), sticky="w")
+
+        def do_connect():
+            ip = (ip_var.get() or "").strip()
+            if not ip:
+                return
+            try:
+                port = int(port_var.get())
+            except Exception:
+                port = protocol.KS_PORT
+            peer = {"did": "manual-" + ip, "name": ip, "kind": "manual",
+                    "osv": "", "ip": ip, "port": port}
+            self._device_peers[peer["did"]] = peer
+            dialog.destroy()
+            self._connect_worker(peer)
+
+        ttk.Button(frame, text="取消", command=dialog.destroy).grid(row=3, column=0, pady=(6, 0))
+        ttk.Button(frame, text="连接", command=do_connect).grid(row=3, column=1, sticky="e", pady=(6, 0))
+        dialog.grab_set()
     def _connect_selected(self):
         peer = self._selected_peer()
         if peer is None:

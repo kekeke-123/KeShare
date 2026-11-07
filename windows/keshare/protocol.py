@@ -314,6 +314,7 @@ def hello_message(did, name, kind, osv, port, caps, nonce):
         "t": M_HELLO, "v": PROTO_VERSION, "did": str(did), "name": str(name)[:64],
         "kind": kind or "windows", "osv": _osv_text(osv),
         "port": int(port or 0), "caps": int(caps or 0), "nonce": str(nonce),
+        "host": local_ip(),
     }
 
 
@@ -322,7 +323,7 @@ def hello_ack_message(did, name, kind, osv, port, caps, nonce, token):
         "t": M_HELLO_ACK, "v": PROTO_VERSION, "did": str(did), "name": str(name)[:64],
         "kind": kind or "windows", "osv": _osv_text(osv),
         "port": int(port or 0), "caps": int(caps or 0), "nonce": str(nonce),
-        "token": str(token),
+        "token": str(token), "host": local_ip(),
     }
 
 
@@ -470,3 +471,23 @@ class RateLimiter(object):
     def reset(self):
         self._start = time.time()
         self._sent = 0
+
+def local_ip():
+    """本机在局域网/热点上的 IPv4，用于告诉对端该连哪个地址。"""
+    import socket as _socket
+    ip = ""
+    try:
+        s = _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM)
+        try:
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+        finally:
+            s.close()
+    except Exception:
+        ip = ""
+    if not ip or ip.startswith("127."):
+        try:
+            ip = _socket.gethostbyname(_socket.gethostname())
+        except Exception:
+            ip = "127.0.0.1"
+    return ip

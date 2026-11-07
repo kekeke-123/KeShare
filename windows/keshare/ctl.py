@@ -59,6 +59,16 @@ def bluetooth_available():
 # ---------------------------------------------------------------------------
 # Link: framing over any stream socket
 # ---------------------------------------------------------------------------
+def _usable_host(value):
+    """只接受 IPv4 私网/链路本地地址，避免被对端误导去连公网。"""
+    try:
+        import ipaddress
+        ip = ipaddress.IPv4Address(str(value).strip())
+    except Exception:
+        return ""
+    if ip.is_private or ip.is_link_local or str(ip).startswith("172.20.10."):
+        return str(ip)
+    return ""
 class CtlLink(object):
     """Length-prefixed JSON over one connected stream socket."""
 
@@ -354,6 +364,15 @@ def _recv_type(link, want, timeout):
             link.log.debug("控制通道忽略消息 %r" % (kind,))
 
 
+def _adopt_host(link, message):
+    """对端在 hello 里声明的 host 优先（蓝牙控制通道时本机拿不到对端 IP）。"""
+    try:
+        host = _usable_host(message.get("host") or "")
+    except Exception:
+        host = ""
+    # 只有当前不知道对端地址时才采用（蓝牙控制通道等场景）
+    if host and not (getattr(link, "peer_ip", "") or "").strip():
+        link.peer_ip = host
 def handshake_client(link, config, local_port, timeout=15.0):
     """Send ``hello`` and validate ``hello_ack`` (A side)."""
     nonce = crypto.rand_hex(8)                     # 16 hex chars
@@ -363,6 +382,7 @@ def handshake_client(link, config, local_port, timeout=15.0):
     try:
         link.send(hello)
         ack = _recv_type(link, protocol.M_HELLO_ACK, timeout)
+        _adopt_host(link, ack)
         protocol.require_fields(ack, "did", "nonce", "token")
         token = crypto.token_for(config.device_id, nonce, ack["did"], ack["nonce"])
         if token != str(ack["token"]).lower():
@@ -384,6 +404,7 @@ def handshake_server(link, config, local_port, timeout=15.0):
     nonce = crypto.rand_hex(8)
     try:
         hello = _recv_type(link, protocol.M_HELLO, timeout)
+        _adopt_host(link, hello)
         protocol.require_fields(hello, "did", "nonce")
         token = crypto.token_for(hello["did"], hello["nonce"],
                                  config.device_id, nonce)

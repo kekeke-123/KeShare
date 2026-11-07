@@ -27,10 +27,13 @@
     self.table.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     [self.view addSubview:self.table];
 
-    self.navigationItem.rightBarButtonItem =
+    self.navigationItem.rightBarButtonItems = @[
         [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"arrow.clockwise"]
                                          style:UIBarButtonItemStylePlain
-                                        target:self action:@selector(refresh)];
+                                        target:self action:@selector(refresh)],
+        [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd
+                                                      target:self action:@selector(manualConnect)]
+    ];
     self.navigationItem.leftBarButtonItem =
         [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"square.and.arrow.up"]
                                          style:UIBarButtonItemStylePlain
@@ -41,6 +44,35 @@
     [self refresh];
 }
 
+- (void)manualConnect
+{
+    UIAlertController *al = [UIAlertController alertControllerWithTitle:@"手动连接"
+                                                                message:@"输入对方 IP（Windows 端可在设置里看到本机地址）"
+                                                         preferredStyle:UIAlertControllerStyleAlert];
+    [al addTextFieldWithConfigurationHandler:^(UITextField *tf) {
+        tf.placeholder = @"192.168.1.100";
+        tf.keyboardType = UIKeyboardTypeDecimalPad;
+        tf.text = @"192.168.1.100";
+    }];
+    [al addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    [al addAction:[UIAlertAction actionWithTitle:@"连接" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
+        NSString *ip = [al.textFields.firstObject.text stringByTrimmingCharactersInSet:
+                        [NSCharacterSet whitespaceCharacterSet]];
+        if (ip.length == 0) return;
+        KSDevice *d = [[KSDevice alloc] init];
+        d.deviceId = [NSString stringWithFormat:@"manual-%@", ip];
+        d.name = ip;
+        d.host = ip;
+        d.port = (uint16_t)KSConfig.shared.port;
+        d.kind = KSDeviceKindWindows;
+        [[KSServer shared] addPeer:d];
+        self.session = [[KSSession alloc] initWithPeer:d];
+        self.session.delegate = self;
+        [self.session startAsInitiator:YES];
+        [self showStatus:[NSString stringWithFormat:@"正在连接 %@…", ip]];
+    }]];
+    [self presentViewController:al animated:YES completion:nil];
+}
 - (void)refresh
 {
     [[KSServer shared] refreshBonjour];

@@ -40,6 +40,11 @@ UIColor *KSSystemAccent(void);
 @interface KSServer (Discovery)
 - (nullable id<KSDiscoveryLink>)bleLink;
 @end
+#pragma mark - UDP 发现（KSDisc.m）
+
+void KSDiscoveryStart(void);
+void KSDiscoveryStop(void);
+
 #pragma mark - 网络小工具（KSInternal.m 里实现）
 
 BOOL KSReadFull(int fd, void *buf, size_t len);
