@@ -19,6 +19,8 @@ from .. import KSAPP_DISPLAY, KSAPP_NAME, KSAPP_VERSION
 from .. import clipboard, files, protocol
 from ..client import KSClient
 from . import glass
+from . import glasslib
+from .haze_ui import HazeUI
 from .theme import font as theme_font
 from .dev_tab import DevTab
 from .remote_browser import RemoteBrowser
@@ -48,9 +50,10 @@ def human_time(stamp):
 # ---------------------------------------------------------------------------
 # Main window
 # ---------------------------------------------------------------------------
-class KeShareApp(tk.Tk):
+class KeShareApp(HazeUI, glasslib.GlassApp):
     def __init__(self, config, logger, server, discovery, registry):
-        tk.Tk.__init__(self)
+        glasslib.GlassApp.__init__(self, "%s %s" % (KSAPP_NAME, KSAPP_DISPLAY),
+                                    1180, 760)
         self.config_obj = config
         self.log = logger
         self.server = server
@@ -74,10 +77,8 @@ class KeShareApp(tk.Tk):
         self.minsize(880, 560)
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
-        self._apply_theme()
-        self._build_header()
-        self._build_notebook()
-        self._build_statusbar()
+        glasslib.GlassTheme.version_text = KSAPP_DISPLAY
+        self._build_haze_ui()
 
         self.discovery.table.set_listener(lambda: self.post("peers", {}))
         if config.developer_unlocked:
@@ -512,6 +513,11 @@ class KeShareApp(tk.Tk):
         self.refresh_devices()
 
     def refresh_devices(self):
+        # Haze 界面：页面切换时整体重建，这里只需刷新当前页
+        if getattr(self, "_haze_ready", False):
+            if self._current_page == "devices":
+                self.show_haze_page("devices")
+            return
         try:
             peers = self.discovery.snapshot()
         except Exception:
@@ -543,6 +549,46 @@ class KeShareApp(tk.Tk):
             empty.place_forget()
         else:
             empty.place(relx=0.5, rely=0.42, anchor="center")
+
+
+    # ------------------------------------------------------------------
+    # Haze 页面用的业务入口
+    # ------------------------------------------------------------------
+    def _push_path(self, rel_path):
+        """把共享目录里的文件推给当前已连接设备。"""
+        client = getattr(self, "_client", None)
+        if client is None:
+            raise RuntimeError("未连接设备")
+        abs_path = self._share.abspath(rel_path)
+        if not os.path.isfile(abs_path):
+            raise RuntimeError("文件不存在")
+        client.push(abs_path, remote_name=os.path.basename(abs_path))
+
+    def _import_files_and_send(self):
+        """选择本地文件 → 复制进接收目录 → 有连接就直接发送。"""
+        import shutil
+        paths = filedialog.askopenfilenames(parent=self, title="选择要发送的文件")
+        if not paths:
+            return
+        self.config_obj.ensure_dirs()
+        client = getattr(self, "_client", None)
+        sent = 0
+        for src in paths:
+            try:
+                dest = files.unique_path(self.config_obj.receive_dir,
+                                         os.path.basename(src))
+                shutil.copy2(src, dest)
+                if client is not None:
+                    client.push(dest, remote_name=os.path.basename(dest))
+                    sent += 1
+            except Exception as exc:
+                self.log.warn("导入发送失败 %s: %s" % (src, exc))
+        if client is None:
+            self.toast.show("已导入 %d 个文件" % len(paths),
+                            "还没有连接设备，连上后可在「文件」页发送", "warn")
+        else:
+            self.toast.show("已发送 %d 个文件" % sent, "", "ok")
+        self.show_haze_page("files")
 
     def _selected_device_did(self):
         selection = self.device_tree.selection()
@@ -796,6 +842,8 @@ class KeShareApp(tk.Tk):
         return ""
 
     def _update_channel_labels(self):
+        if getattr(self, "_haze_ready", False):
+            return
         client = getattr(self, "_client", None)
         if client is not None:
             ctl = client.transport_label
@@ -813,6 +861,13 @@ class KeShareApp(tk.Tk):
     # local files
     # ------------------------------------------------------------------
     def refresh_files(self, rel_path):
+        # Haze 界面：页面切换时整体重建
+        if getattr(self, "_haze_ready", False):
+            if rel_path is not None and rel_path != "":
+                self._browse_rel = rel_path
+            if self._current_page == "files":
+                self.show_haze_page("files")
+            return
         try:
             rel = files.normalise_rel(rel_path or "")
         except files.SandboxError:

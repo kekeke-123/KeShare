@@ -69,6 +69,7 @@ class GlassTheme(object):
     accent2 = (160, 107, 255)
     ok = (74, 222, 128)
     warn = (251, 191, 36)
+    danger = (248, 113, 113)
     err = (248, 113, 113)
 
     tint = (18, 24, 38)          # 磨砂玻璃底色
@@ -179,6 +180,19 @@ def draw_glyph(surface, name, cx, cy, size=9, color=None):
         draw.ellipse([cx - 1.5, cy - s * 0.6, cx + 1.5, cy - s * 0.6 + 3], fill=color)
     else:
         draw.ellipse([cx - 3, cy - 3, cx + 3, cy + 3], fill=color)
+
+def human_size(num):
+    """人类可读的字节数。"""
+    try:
+        num = float(num or 0)
+    except (TypeError, ValueError):
+        return "-"
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if abs(num) < 1024.0 or unit == "TB":
+            return ("%.0f %s" % (num, unit)) if unit == "B" else ("%.1f %s" % (num, unit))
+        num /= 1024.0
+    return "%.1f TB" % num
+
 
 # ---------------------------------------------------------------- 动画
 def approach(current, target, dt, speed=14.0):
@@ -515,7 +529,8 @@ class GlassSidebar(GlassWidget):
 
         # 品牌区
         surface.text((self.x + 24, self.y + 26), "KeShare", 22, GlassTheme.fg, True)
-        surface.text((self.x + 24, self.y + 58), "0.0.1 beta1", 12, GlassTheme.muted)
+        surface.text((self.x + 24, self.y + 58), getattr(GlassTheme, "version_text", ""), 12,
+                     GlassTheme.muted)
 
         for i, item in enumerate(self.items):
             rx, ry, rw, rh = self._item_rect(i)
@@ -628,6 +643,12 @@ class GlassApp(tk.Tk):
             return
         self._win_w, self._win_h = event.width, event.height
         self._backdrop_image = haze.make_backdrop(self._win_w, self._win_h, GlassTheme.palette())
+        # Haze 页面按窗口尺寸绝对定位，尺寸变了必须重排
+        if hasattr(self, "_relayout_haze"):
+            try:
+                self._relayout_haze()
+            except Exception:
+                pass
         self.invalidate()
 
     def _on_motion(self, px, py):
