@@ -11,6 +11,11 @@
 NS_ASSUME_NONNULL_BEGIN
 
 #define KS_VERSION_STRING   @"0.0.1 beta1"
+// 构建变体：Lite 版在同等功能下采用更激进的传输参数
+#ifndef KS_LITE
+#define KS_LITE 0
+#endif
+
 #define KS_KERNEL_VERSION  @"0.0.1-beta1+kernel.1"   // 内核（协议实现）版本
 #define KS_PROTOCOL_VERSION @"KS/1"
 #define KS_BUILD_STRING     @"1"
@@ -104,6 +109,7 @@ typedef NS_ENUM(NSInteger, KSTransferState) {
 @property (nonatomic, assign) BOOL allowClipboard;
 @property (nonatomic, assign) NSInteger maxSpeedKBps;   // 0 = 不限速
 @property (nonatomic, assign) NSInteger maxFileMB;
+@property (nonatomic, assign) NSInteger concurrency;
 @property (nonatomic, assign) NSInteger chunkKB;
 @property (nonatomic, assign) NSInteger port;
 @property (nonatomic, assign) BOOL autoAcceptPairing;

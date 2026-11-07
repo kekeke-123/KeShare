@@ -136,9 +136,12 @@ NSString *KSHashOfData(NSData *data)
             @"receive_dir": @"Received",
             @"allow_upload": @YES,
             @"allow_clipboard": @YES,
+            // Lite 版更激进：更大分块、更高并发、不限速；稳定版保守一些
             @"max_speed_kbps": @0,
-            @"max_file_mb": @2048,
-            @"chunk_kb": @64
+            @"max_file_mb": @(KS_LITE ? 8192 : 2048),
+            @"chunk_kb": @(KS_LITE ? 1024 : 64),
+            @"concurrency": @(KS_LITE ? 4 : 2),
+            @"socket_buffer_kb": @(KS_LITE ? 1024 : 256)
         },
         @"network": @{
             @"port": @(KS_DATA_PORT),
@@ -244,7 +247,8 @@ static void mergeDefaults(NSMutableDictionary *dst, NSDictionary *def)
 - (void)setMaxSpeedKBps:(NSInteger)v { [self setValue:@(v) forPath:@"share.max_speed_kbps"]; }
 - (NSInteger)maxFileMB { return [[self valueForPath:@"share.max_file_mb"] integerValue]; }
 - (void)setMaxFileMB:(NSInteger)v { [self setValue:@(v) forPath:@"share.max_file_mb"]; }
-- (NSInteger)chunkKB { return [[self valueForPath:@"share.chunk_kb"] integerValue]; }
+- (NSInteger)concurrency { return [[self valueForPath:@"share.concurrency"] integerValue] ?: 1; }
+- (void)setConcurrency:(NSInteger)v { [self setValue:@(MAX(1, v)) forPath:@"share.concurrency"]; }\n\n- (NSInteger)chunkKB { return [[self valueForPath:@"share.chunk_kb"] integerValue]; }
 - (void)setChunkKB:(NSInteger)v { [self setValue:@(v) forPath:@"share.chunk_kb"]; }
 - (NSInteger)port { return [[self valueForPath:@"network.port"] integerValue]; }
 - (void)setPort:(NSInteger)v { [self setValue:@(v) forPath:@"network.port"]; }
