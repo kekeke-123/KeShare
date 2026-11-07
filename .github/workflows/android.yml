@@ -1,0 +1,61 @@
+name: Android (debug APK)
+
+on:
+  push:
+    branches: [ master ]
+    paths:
+      - 'android/**'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    name: 构建 KeShare Android APK
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 安装 Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: 构建 Debug APK
+        run: |
+          cd android
+          gradle assembleDebug --no-daemon --stacktrace 2>&1 | tee /tmp/build.log
+
+      - name: 显示产物
+        run: ls -la android/app/build/outputs/apk/debug/
+
+      - name: 上传 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: KeShare-android-${{ github.run_number }}
+          path: android/app/build/outputs/apk/debug/*.apk
+          retention-days: 30
+
+      - name: 推送 APK 到 android-artifacts 分支
+        if: success()
+        run: |
+          cp android/app/build/outputs/apk/debug/*.apk "$RUNNER_TEMP/KeShare-android.apk"
+          cd "$RUNNER_TEMP"
+          rm -rf pub && mkdir pub && cd pub
+          git init -q
+          git config user.name  "KeShare CI"
+          git config user.email "ci@keshare.local"
+          cp ../KeShare-android.apk .
+          git add KeShare-android.apk
+          git commit -qm "Android APK build ${GITHUB_RUN_NUMBER} (${GITHUB_SHA:0:7})"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" HEAD:android-artifacts
+
+      - name: 失败时归档日志
+        if: failure()
+        run: tail -120 /tmp/build.log || true
