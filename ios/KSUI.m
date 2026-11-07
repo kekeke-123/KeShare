@@ -39,6 +39,8 @@
                                          style:UIBarButtonItemStylePlain
                                         target:self action:@selector(shareAppInfo)];
 
+    [self buildOfflineBanner];
+
     [[NSNotificationCenter defaultCenter] addObserver:self.table selector:@selector(reloadData)
                                                  name:KSPeersDidChangeNotification object:nil];
     [self refresh];
@@ -72,6 +74,102 @@
         [self showStatus:[NSString stringWithFormat:@"正在连接 %@…", ip]];
     }]];
     [self presentViewController:al animated:YES completion:nil];
+}
+- (void)buildOfflineBanner
+{
+    KSGlassView *banner = [KSGlassView glassView];
+    banner.translatesAutoresizingMaskIntoConstraints = NO;
+    banner.cornerRadius = 16;
+    banner.tag = 9001;
+    [self.view addSubview:banner];
+
+    UILabel *title = [[UILabel alloc] init];
+    title.text = @"没有可用网络";
+    title.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
+    title.textColor = UIColor.whiteColor;
+    title.translatesAutoresizingMaskIntoConstraints = NO;
+
+    UILabel *desc = [[UILabel alloc] init];
+    desc.text = [NSString stringWithFormat:@"让电脑开热点「%@」，再连上它即可互传",
+                 KSConfig.shared.hotspotSSID];
+    desc.font = [UIFont systemFontOfSize:11];
+    desc.textColor = [UIColor colorWithWhite:1 alpha:0.66];
+    desc.numberOfLines = 2;
+    desc.translatesAutoresizingMaskIntoConstraints = NO;
+
+    UIButton *settings = [UIButton buttonWithType:UIButtonTypeSystem];
+    [settings setTitle:@"打开设置" forState:UIControlStateNormal];
+    settings.titleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightSemibold];
+    [settings addTarget:self action:@selector(openNetworkSettings) forControlEvents:UIControlEventTouchUpInside];
+    settings.translatesAutoresizingMaskIntoConstraints = NO;
+
+    UIButton *copy = [UIButton buttonWithType:UIButtonTypeSystem];
+    [copy setTitle:@"复制热点信息" forState:UIControlStateNormal];
+    copy.titleLabel.font = [UIFont systemFontOfSize:12];
+    [copy addTarget:self action:@selector(copyHotspotInfo) forControlEvents:UIControlEventTouchUpInside];
+    copy.translatesAutoresizingMaskIntoConstraints = NO;
+
+    [banner addSubview:title];
+    [banner addSubview:desc];
+    [banner addSubview:settings];
+    [banner addSubview:copy];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [banner.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:16],
+        [banner.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-16],
+        [banner.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:6],
+        [title.leadingAnchor constraintEqualToAnchor:banner.leadingAnchor constant:14],
+        [title.topAnchor constraintEqualToAnchor:banner.topAnchor constant:12],
+        [desc.leadingAnchor constraintEqualToAnchor:title.leadingAnchor],
+        [desc.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:2],
+        [desc.trailingAnchor constraintLessThanOrEqualToAnchor:banner.trailingAnchor constant:-14],
+        [settings.leadingAnchor constraintEqualToAnchor:title.leadingAnchor],
+        [settings.topAnchor constraintEqualToAnchor:desc.bottomAnchor constant:6],
+        [settings.bottomAnchor constraintEqualToAnchor:banner.bottomAnchor constant:-10],
+        [copy.leadingAnchor constraintEqualToAnchor:settings.trailingAnchor constant:14],
+        [copy.centerYAnchor constraintEqualToAnchor:settings.centerYAnchor]
+    ]];
+    banner.hidden = YES;
+}
+
+- (void)updateOfflineBanner
+{
+    UIView *banner = [self.view viewWithTag:9001];
+    if (!banner) return;
+    NSString *ip = KSIPv4StringLocal();
+    BOOL offline = [ip isEqualToString:@"127.0.0.1"] || [ip hasPrefix:@"169.254."];
+    banner.hidden = !offline;
+    CGFloat top = offline ? 118.0 : 0.0;
+    self.table.frame = CGRectMake(0, top, self.view.bounds.size.width,
+                                  self.view.bounds.size.height - top);
+}
+
+- (void)openNetworkSettings
+{
+    NSArray *urls = @[@"App-Prefs:root=INTERNET_TETHERING",
+                      @"App-Prefs:root=WIFI",
+                      UIApplicationOpenSettingsURLString];
+    for (NSString *s in urls) {
+        NSURL *url = [NSURL URLWithString:s];
+        if (url && [[UIApplication sharedApplication] canOpenURL:url]) {
+            [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];
+            return;
+        }
+    }
+}
+
+- (void)copyHotspotInfo
+{
+    NSString *text = [NSString stringWithFormat:@"Wi-Fi 名称：%@\n密码：%@",
+                      KSConfig.shared.hotspotSSID, KSConfig.shared.hotspotPassword];
+    UIPasteboard.generalPasteboard.string = text;
+    [self showStatus:@"热点信息已复制到剪贴板"];
+}
+
+- (void)viewWillAppear:(BOOL)animated
+{
+    [super viewWillAppear:animated];
+    [self updateOfflineBanner];
 }
 - (void)refresh
 {
@@ -410,6 +508,13 @@
     return cell;
 }
 
+- (void)toggleAutoConnect:(UISwitch *)sw
+{
+    KSConfig.shared.autoConnect = sw.isOn;
+    [KSConfig.shared save];
+    if (sw.isOn) [[KSServer shared] autoConnectKnownPeers];
+}
+
 - (void)toggle:(UISwitch *)sw
 {
     CGPoint p = [sw convertPoint:CGPointZero toView:self.table];
@@ -436,6 +541,16 @@
     }
     if (ip.section == 2) {
         if (ip.row == 0) return [self cellWithTitle:@"端口" detail:@(KSConfig.shared.port).stringValue switchOn:NO];
+        if (ip.row == 2) {
+            UITableViewCell *cell = [self cellWithTitle:@"自动连接历史设备"
+                                                 detail:KSConfig.shared.autoConnect ? @"开" : @"关"
+                                               switchOn:KSConfig.shared.autoConnect];
+            UISwitch *sw = (UISwitch *)cell.accessoryView;
+            sw.tag = 7001;
+            [sw removeTarget:self action:@selector(toggle:) forControlEvents:UIControlEventValueChanged];
+            [sw addTarget:self action:@selector(toggleAutoConnect:) forControlEvents:UIControlEventValueChanged];
+            return cell;
+        }
         return [self cellWithTitle:@"发现方式" detail:KSConfig.shared.discoveryMode switchOn:NO];
     }
     // 关于

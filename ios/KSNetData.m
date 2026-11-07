@@ -477,6 +477,48 @@
     [[KSDataRegistry shared] removePendingForId:tid];
 }
 
+#pragma mark 历史设备自动连接
+
+- (void)autoConnectKnownPeers
+{
+    if (!KSConfig.shared.autoConnect) {
+        [[KSLog shared] info:@"自动连接未开启"];
+        return;
+    }
+    NSArray<NSDictionary *> *known = [KSConfig.shared knownDevices];
+    if (known.count == 0) return;
+    NSInteger limit = 0;
+    __weak typeof(self) weakSelf = self;
+    for (NSDictionary *item in known) {
+        if (limit >= 3) break;
+        NSString *did = item[@"did"] ?: @"";
+        NSString *host = item[@"host"] ?: @"";
+        if (did.length == 0 || host.length == 0) continue;
+        if ([did isEqualToString:KSConfig.shared.deviceId]) continue;
+        if ([self.mutablePeers indexOfObjectPassingTest:^BOOL(KSDevice *obj, NSUInteger idx, BOOL *stop) {
+                return [obj.deviceId isEqualToString:did] && obj.connected;
+            }] != NSNotFound) continue;
+
+        KSDevice *peer = [[KSDevice alloc] init];
+        peer.deviceId = did;
+        peer.name = item[@"name"] ?: did;
+        peer.host = host;
+        peer.port = (uint16_t)([item[@"port"] unsignedShortValue] ?: KSConfig.shared.port);
+        peer.kind = KSDeviceKindWindows;
+        [weakSelf addPeer:peer];
+        [[KSLog shared] info:@"自动连接历史设备 %@ (%@)", peer.name, host];
+
+        double delay = 0.6 + 0.8 * (double)limit;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            KSSession *session = [[KSSession alloc] initWithPeer:peer];
+            [session startAsInitiator:YES];
+            [weakSelf.sessions setObject:session forKey:did];
+        });
+        limit++;
+    }
+}
+
 - (void)addPeer:(KSDevice *)d
 {
     if (!d.deviceId) return;
@@ -489,6 +531,7 @@
     }
     [self.mutablePeers addObject:d];
     [[KSLog shared] info:@"发现设备 %@ (%@)", d.name, d.kindLabel];
+    if (d.host.length) [KSConfig.shared rememberDevice:d];
     [[NSNotificationCenter defaultCenter] postNotificationName:KSPeersDidChangeNotification object:nil];
 }
 

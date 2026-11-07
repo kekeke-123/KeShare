@@ -39,6 +39,7 @@ UIColor *KSSystemAccent(void);
 /// KSServer 的蓝牙发现入口（实现在 KSNetData.m）
 @interface KSServer (Discovery)
 - (nullable id<KSDiscoveryLink>)bleLink;
+- (void)autoConnectKnownPeers;
 @end
 #pragma mark - UDP 发现（KSDisc.m）
 

@@ -18,6 +18,7 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 from .. import KSAPP_NAME, KSAPP_VERSION
 from .. import clipboard, files, protocol
 from ..client import KSClient
+from .theme import font as theme_font
 from .dev_tab import DevTab
 from .remote_browser import RemoteBrowser
 from .settings_tab import SettingsTab
@@ -188,6 +189,8 @@ class KeShareApp(tk.Tk):
         ttk.Button(bar, text="连接", command=self._connect_selected).pack(side="left", padx=6)
         ttk.Button(bar, text="断开", command=self._disconnect).pack(side="left")
         ttk.Button(bar, text="手动连接…", command=self._manual_connect).pack(side="left", padx=6)
+        ttk.Button(bar, text="USB 连接", command=self._usb_connect).pack(side="left")
+        ttk.Button(bar, text="开启热点", command=self._toggle_hotspot).pack(side="left", padx=6)
         self.device_hint = tk.StringVar(value="双击设备或点击“连接”建立控制通道")
         ttk.Label(bar, textvariable=self.device_hint,
                   foreground=self.palette["muted"]).pack(side="left", padx=12)
@@ -384,6 +387,161 @@ class KeShareApp(tk.Tk):
             return None
         return self._device_peers.get(did)
 
+    # ------------------------------------------------------------ Apple 驱动
+    def _apple_driver_dialog(self):
+        """未安装 Apple Mobile Device Service 时的提示：安装 / 忽略。"""
+        from .. import appledrv
+        from .theme import PillButton
+
+        dialog = tk.Toplevel(self)
+        dialog.title("缺少 Apple 驱动")
+        dialog.transient(self)
+        dialog.resizable(False, False)
+        dialog.configure(bg=self.palette["bg"])
+        frame = ttk.Frame(dialog, padding=18)
+        frame.pack(fill="both", expand=True)
+
+        ttk.Label(frame, text="无法通过 USB 传输文件",
+                  font=theme_font(12, "bold")).pack(anchor="w")
+        ttk.Label(frame,
+                  text="当前设备未安装 Apple Mobile Device Service 驱动，\n"
+                       "无法通过 USB 传输文件，可点击下方按钮安装或忽略。",
+                  foreground=self.palette["muted"], justify="left").pack(anchor="w", pady=(8, 12))
+
+        log_var = tk.StringVar(value="")
+        ttk.Label(frame, textvariable=log_var, foreground=self.palette["muted"],
+                  justify="left", wraplength=460).pack(anchor="w", pady=(0, 10))
+
+        buttons = ttk.Frame(frame)
+        buttons.pack(fill="x")
+
+        install_btn = PillButton(buttons, self.palette, "安装驱动", kind="primary")
+
+        def do_install():
+            log_var.set("正在通过 winget 安装 iTunes（含驱动），可能需要几分钟…")
+            install_btn.set_enabled(False)
+
+            def worker():
+                result = appledrv.install_itunes_via_winget()
+
+                def done():
+                    install_btn.set_enabled(True)
+                    if result.get("ok"):
+                        log_var.set("安装完成，请重开本程序后再点「USB 连接」。")
+                    else:
+                        log_var.set("winget 安装失败：%s\n可改用「应用商店安装」或官网。"
+                                    % (result.get("err") or "",))
+                self.after(0, done)
+            threading.Thread(target=worker, name="ks-winget", daemon=True).start()
+
+        install_btn.command = do_install
+        install_btn.pack(side="left")
+
+        def do_store():
+            appledrv.open_store_page()
+            log_var.set("已打开 Microsoft Store 的「Apple 设备」页面，安装后重开本程序。")
+
+        def do_ignore():
+            try:
+                self.config_obj.data.setdefault("usb", {})["driver_prompt_dismissed"] = True
+                self.config_obj.save()
+            except Exception:
+                pass
+            dialog.destroy()
+
+        PillButton(buttons, self.palette, "应用商店安装", command=do_store, kind="ghost").pack(side="left", padx=8)
+        PillButton(buttons, self.palette, "忽略", command=do_ignore, kind="ghost").pack(side="right")
+        dialog.grab_set()
+
+    def _ensure_apple_driver(self):
+        """返回 True 表示 USB 传输可用；否则弹出提示并返回 False。"""
+        try:
+            from .. import appledrv
+        except Exception:
+            return False
+        status = appledrv.status()
+        if status.get("ready"):
+            return True
+        if status.get("present"):
+            if appledrv.start_service() and appledrv.port_reachable():
+                return True
+        try:
+            if self.config_obj.data.get("usb", {}).get("driver_prompt_dismissed"):
+                return False
+        except Exception:
+            pass
+        self._apple_driver_dialog()
+        return False
+
+    def _usb_connect(self):
+        """USB 传输：经 iTunes 的 usbmuxd 隧道连接 iPhone（无需 WiFi/蓝牙）。"""
+        if not self._ensure_apple_driver():
+            return
+        try:
+            from .. import usb as usbmod
+        except Exception as exc:
+            messagebox.showerror("USB 不可用", str(exc), parent=self)
+            return
+        try:
+            devices = usbmod.list_devices()
+        except Exception as exc:
+            messagebox.showerror(
+                "USB 不可用",
+                "%s\n\n需要：1) 已安装 iTunes 或「Apple 设备」\n"
+                "2) 数据线已连接\n3) 手机已点「信任本电脑」" % (exc,), parent=self)
+            return
+        if not devices:
+            messagebox.showinfo(
+                "没有设备",
+                "没有检测到 USB 连接的 iOS 设备。\n请插好数据线，并在手机上点「信任」。",
+                parent=self)
+            return
+        dev = devices[0]
+        self.device_hint.set("正在通过 USB 连接 %s …" % (dev.get("name") or "iPhone",))
+        peer = {"did": "usb-%s" % (dev.get("device_id"),), "name": dev.get("name") or "iPhone(USB)",
+                "kind": "ios", "osv": "", "ip": "usb", "port": protocol.KS_PORT}
+        self._device_peers[peer["did"]] = peer
+
+        def worker():
+            client = KSClient(self.config_obj, "usb", protocol.KS_PORT, log=self.log,
+                              local_port=self.server.port, registry=self.registry,
+                              on_event=self.post, resolve_ip=self._resolve_ip)
+            try:
+                client.connect_usb(device_id=dev.get("device_id"))
+            except Exception as exc:
+                self.post("connect_failed", {"err": str(exc)})
+                return
+            self.post("connected", {"client": client})
+
+        thread = threading.Thread(target=worker, name="ks-usb")
+        thread.daemon = True
+        thread.start()
+
+    def _toggle_hotspot(self):
+        """一键开关 Windows 移动热点（需要管理员权限）。"""
+        try:
+            from .. import btwin
+        except Exception as exc:
+            messagebox.showerror("热点不可用", str(exc), parent=self)
+            return
+        status = btwin.hotspot_status()
+        state = str(status.get("state") or "")
+        if "On" in state:
+            result = btwin.hotspot_stop()
+            messagebox.showinfo("热点", "热点已关闭", parent=self)
+            return
+        ssid = "KeShare-%s" % (self.config_obj.device_id[-4:].upper(),)
+        password = "keshare123"
+        result = btwin.hotspot_start(ssid, password)
+        if result.get("ok"):
+            messagebox.showinfo(
+                "热点已开启",
+                "SSID：%s\n密码：%s\n\n在 iPhone 上连接该 Wi-Fi，然后回到 KeShare。\n"
+                "（若失败，请以管理员身份运行本程序）" % (ssid, password), parent=self)
+        else:
+            messagebox.showerror("开启热点失败",
+                                 "%s\n\n提示：需要管理员权限，且无线网卡需支持承载网络。"
+                                 % (result.get("err") or "未知错误"), parent=self)
     def _manual_connect(self):
         """手动输入 IP 连接：蓝牙/UDP 发现不到时使用（如手机热点场景）。"""
         dialog = tk.Toplevel(self)

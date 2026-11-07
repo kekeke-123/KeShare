@@ -248,6 +248,33 @@ def connect_wifi(host, port, timeout=10.0, log=None, token=None):
     return CtlLink(sock, transport="wifi", peer_ip=str(host), log=log)
 
 
+def connect_usb(port=protocol.KS_PORT, device_id=None, timeout=12.0, log=None, token=None):
+    """Open a CTL link tunnelled through usbmuxd (USB cable, iTunes service).
+
+    The tunnel lands on the iOS listener (port 47377), so the same
+    ``CTL <token>\n`` + length-prefixed frames as WiFi apply.
+    """
+    from . import usb as _usb
+    try:
+        sock = _usb.open_tunnel(int(port), device_id=device_id, timeout=float(timeout))
+    except _usb.UsbError as exc:
+        raise CtlError(str(exc), "io")
+    try:
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+    except OSError:
+        pass
+    sock.settimeout(float(timeout))
+    try:
+        sock.sendall(protocol.ctl_preamble_line(token))
+    except (OSError, protocol.ProtocolError) as exc:
+        try:
+            sock.close()
+        except OSError:
+            pass
+        raise CtlError("发送 USB CTL 首行失败: %s" % (exc,), "io")
+    return CtlLink(sock, transport="usb", peer_ip="usb", log=log)
+
+
 def connect_bluetooth(address, channel=BT_CHANNEL, timeout=10.0, log=None):
     """Open a CTL link over Bluetooth RFCOMM (best effort)."""
     if not bluetooth_available():

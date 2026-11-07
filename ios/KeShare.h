@@ -109,6 +109,7 @@ typedef NS_ENUM(NSInteger, KSTransferState) {
 @property (nonatomic, assign) BOOL autoAcceptPairing;
 @property (nonatomic, copy) NSString *discoveryMode;    // both / ble / wifi / off
 @property (nonatomic, copy) NSString *theme;            // dark / light / auto
+@property (nonatomic, assign) BOOL autoConnect;              // 自动连接历史设备
 @property (nonatomic, assign) BOOL developerUnlocked;
 @property (nonatomic, assign) BOOL verboseLogging;
 @property (nonatomic, assign) NSInteger logRingSize;
@@ -120,6 +121,13 @@ typedef NS_ENUM(NSInteger, KSTransferState) {
 
 - (void)reload;
 - (BOOL)save;
+/// 历史设备（自动连接用）
+- (NSArray<NSDictionary *> *)knownDevices;
+- (void)rememberDevice:(KSDevice *)device;
+- (void)forgetDeviceWithId:(NSString *)deviceId;
+/// 热点信息（引导用）
+- (NSString *)hotspotSSID;
+- (NSString *)hotspotPassword;
 - (NSDictionary *)jsonRepresentation;
 
 @end

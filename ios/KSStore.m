@@ -276,12 +276,58 @@ static void mergeDefaults(NSMutableDictionary *dst, NSDictionary *def)
 - (void)setDiscoveryMode:(NSString *)v { [self setValue:v forPath:@"network.discovery"]; }
 - (NSString *)theme { return [self valueForPath:@"ui.theme"]; }
 - (void)setTheme:(NSString *)v { [self setValue:v forPath:@"ui.theme"]; }
+- (BOOL)autoConnect { return [[self valueForPath:@"network.auto_connect"] boolValue]; }
+- (void)setAutoConnect:(BOOL)v { [self setValue:@(v) forPath:@"network.auto_connect"]; }
 - (BOOL)developerUnlocked { return [[self valueForPath:@"developer.unlocked"] boolValue]; }
 - (void)setDeveloperUnlocked:(BOOL)v { [self setValue:@(v) forPath:@"developer.unlocked"]; }
 - (BOOL)verboseLogging { return [[self valueForPath:@"developer.verbose_logging"] boolValue]; }
 - (void)setVerboseLogging:(BOOL)v { [self setValue:@(v) forPath:@"developer.verbose_logging"]; }
 - (NSInteger)logRingSize { return [[self valueForPath:@"developer.log_ring_size"] integerValue]; }
 - (void)setLogRingSize:(NSInteger)v { [self setValue:@(v) forPath:@"developer.log_ring_size"]; }
+
+- (NSArray<NSDictionary *> *)knownDevices
+{
+    NSArray *list = [self valueForPath:@"history"];
+    return [list isKindOfClass:[NSArray class]] ? list : @[];
+}
+
+- (void)rememberDevice:(KSDevice *)device
+{
+    if (device.deviceId.length == 0) return;
+    NSMutableArray *list = [[self knownDevices] mutableCopy];
+    [list filterUsingPredicate:[NSPredicate predicateWithFormat:@"did != %@", device.deviceId]];
+    [list insertObject:@{
+        @"did": device.deviceId,
+        @"name": device.name ?: @"",
+        @"kind": device.kindLabel ?: @"",
+        @"host": device.host ?: @"",
+        @"port": @(device.port),
+        @"seen": @((long)[NSDate date].timeIntervalSince1970)
+    } atIndex:0];
+    while (list.count > 20) [list removeLastObject];
+    [self setValue:list forPath:@"history"];
+    [self save];
+}
+
+- (void)forgetDeviceWithId:(NSString *)deviceId
+{
+    NSMutableArray *list = [[self knownDevices] mutableCopy];
+    [list filterUsingPredicate:[NSPredicate predicateWithFormat:@"did != %@", deviceId ?: @""]];
+    [self setValue:list forPath:@"history"];
+    [self save];
+}
+
+- (NSString *)hotspotSSID
+{
+    NSString *did = self.deviceId ?: @"0000";
+    NSString *tail = did.length >= 4 ? [did substringFromIndex:did.length - 4] : did;
+    return [NSString stringWithFormat:@"KeShare-%@", tail.uppercaseString];
+}
+
+- (NSString *)hotspotPassword
+{
+    return @"keshare123";
+}
 
 - (NSString *)receivePath
 {

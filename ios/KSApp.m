@@ -333,6 +333,10 @@
     [self.window makeKeyAndVisible];
 
     [[KSServer shared] start];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        [[KSServer shared] autoConnectKnownPeers];
+    });
     return YES;
 }
 
@@ -346,6 +350,10 @@
 {
     [[KSLog shared] info:@"回到前台"];
     [[KSServer shared] start];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        [[KSServer shared] autoConnectKnownPeers];
+    });
 }
 
 - (void)applicationWillTerminate:(UIApplication *)application

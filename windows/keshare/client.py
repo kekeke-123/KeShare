@@ -83,6 +83,18 @@ class KSClient(object):
                 self.host, self.port, link.label))
         return session
 
+    def connect_usb(self, device_id=None, timeout=None):
+        """USB 传输：经 usbmuxd 隧道连到 iOS 的 47377 监听端口。"""
+        timeout = float(timeout or 15.0)
+        link = ctl.connect_usb(self.port, device_id=device_id, timeout=timeout, log=self.log)
+        session = ctl.CtlSession(link, self.config, self.local_port, log=self.log,
+                                 registry=self.registry, on_event=self.on_event,
+                                 resolve_ip=self.resolve_ip)
+        reply = session.handshake_client(timeout=timeout)
+        self._session = session
+        self.peer = reply
+        self.peer_ip = "usb"
+        return reply
     def connect_bluetooth(self, address, channel=ctl.BT_CHANNEL, timeout=None):
         """Try the Bluetooth CTL transport instead of the WiFi fallback."""
         timeout = float(timeout or self.timeout)
