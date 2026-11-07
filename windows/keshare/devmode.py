@@ -14,8 +14,9 @@ from __future__ import annotations
 import hashlib
 import hmac
 
-# 内置密钥（构建期固定）
-_KEY = b"KeShare576"
+# 内置密钥（构建期固定）：存储形式为「每字节异或 0x5A」，避免明文可见
+_KEY_OBF = bytes((0x11, 0x3f, 0x09, 0x32, 0x3b, 0x28, 0x3f, 0x6f, 0x6d, 0x6c))
+_KEY = bytes(b ^ 0x5A for b in _KEY_OBF)
 
 # 密文 = "Dev-KeSha8re-26123Kernelcix" 与 SHA-256(_KEY) 异或后的结果
 _CIPHER = bytes((

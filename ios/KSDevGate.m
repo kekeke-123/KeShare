@@ -16,7 +16,10 @@
 
 @implementation KSDevGate
 
-static const uint8_t kKeyBytes[] = { 'K','e','S','h','a','r','e','5','7','6' };
+// 密钥「KeShare576」每字节异或 0x5A 后的形式：避免以明文出现在字符串表里
+static const uint8_t kKeyObfuscated[] = {
+    0x11, 0x3f, 0x09, 0x32, 0x3b, 0x28, 0x3f, 0x6f, 0x6d, 0x6c
+};
 
 static const uint8_t kCipherBytes[] = {
     0x11, 0x3e, 0xea, 0xc0, 0x6b, 0xc8, 0x49, 0xb7, 0x0b, 0x30, 0xd0, 0x1f, 0xf6, 0xe8,
@@ -25,8 +28,12 @@ static const uint8_t kCipherBytes[] = {
 
 + (NSString *)decryptedPassword
 {
+    uint8_t key[sizeof(kKeyObfuscated)];
+    for (size_t i = 0; i < sizeof(kKeyObfuscated); i++) {
+        key[i] = kKeyObfuscated[i] ^ 0x5A;
+    }
     uint8_t stream[CC_SHA256_DIGEST_LENGTH];
-    CC_SHA256(kKeyBytes, (CC_LONG)sizeof(kKeyBytes), stream);
+    CC_SHA256(key, (CC_LONG)sizeof(key), stream);
 
     size_t length = sizeof(kCipherBytes);
     uint8_t plain[sizeof(kCipherBytes) + 1];
