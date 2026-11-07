@@ -242,3 +242,36 @@ if __name__ == "__main__":
     print("classic:", json.dumps(classic_inquiry()[:5], ensure_ascii=False))
     print("ble:", json.dumps(ble_scan(4)[:5], ensure_ascii=False))
     print("hotspot:", json.dumps(hotspot_status(), ensure_ascii=False))
+
+def ble_peers(seconds=4):
+    """扫描 BLE 广播，解析形如 ``K|<ip>|<id>`` 的名称，返回可直连的 peer。
+
+    iOS 端把 IP 编进广播名，因此即使 UDP 广播被防火墙拦截也能发现设备。
+    """
+    out = []
+    for item in ble_scan(seconds):
+        name = (item.get("name") or "").strip()
+        if not name.startswith("K|"):
+            continue
+        parts = name.split("|")
+        if len(parts) < 2 or not parts[1]:
+            continue
+        host = parts[1].strip()
+        if ":" in host:
+            host, _, port = host.partition(":")
+        else:
+            port = "47377"
+        try:
+            port_num = int(port)
+        except ValueError:
+            port_num = 47377
+        out.append({
+            "did": "ble-" + (parts[2] if len(parts) > 2 else host.replace(".", "")),
+            "name": "iPhone (%s)" % host,
+            "kind": "ios",
+            "osv": "",
+            "ip": host,
+            "port": port_num,
+            "rssi": item.get("rssi", 0),
+        })
+    return out

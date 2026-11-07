@@ -352,6 +352,27 @@ class KeShareApp(tk.Tk):
     # ------------------------------------------------------------------
     # devices
     # ------------------------------------------------------------------
+    def _ble_scan_worker(self):
+        """后台扫描 BLE，把带 IP 的广播直接加进设备列表（UDP 被拦时的兜底）。"""
+        try:
+            from .. import btwin
+            peers = btwin.ble_peers(4)
+        except Exception as exc:
+            self.log.warn("蓝牙扫描失败：%s" % (exc,))
+            return
+        if not peers:
+            self.log.info("蓝牙未扫到 KeShare 设备")
+            return
+        for peer in peers:
+            self.log.info("蓝牙发现 %s (%s:%s)" % (peer["name"], peer["ip"], peer["port"]))
+            self.post("ble_peer", peer)
+
+    def _start_ble_scan(self):
+        self.device_hint.set("正在通过蓝牙扫描…")
+        thread = threading.Thread(target=self._ble_scan_worker, name="ks-ble")
+        thread.daemon = True
+        thread.start()
+
     def _refresh_devices_clicked(self):
         self.discovery.probe_now()
         self.refresh_devices()

@@ -168,11 +168,18 @@
 - (void)peripheralManager:(CBPeripheralManager *)peripheral didAddService:(CBService *)service error:(NSError *)error
 {
     if (error) { [[KSLog shared] error:@"注册 GATT 服务失败: %@", error.localizedDescription]; return; }
+    // 把 IP:端口 编进广播名，Windows 端靠 BLE 就能拿到地址（UDP 被防火墙拦时唯一通路）
+    // 格式：K|<ip>:<port>|<did后6位>，总长控制在 31 字节内
+    NSString *ip = KSIPv4StringLocal();
+    NSString *tail = KSConfig.shared.deviceId.length >= 6
+        ? [KSConfig.shared.deviceId substringFromIndex:KSConfig.shared.deviceId.length - 6] : @"";
+    NSString *advName = [NSString stringWithFormat:@"K|%@|%@", ip, tail];
+
     [_pm startAdvertising:@{
-        CBAdvertisementDataLocalNameKey: KSConfig.shared.deviceName ?: @"KeShare",
+        CBAdvertisementDataLocalNameKey: advName,
         CBAdvertisementDataServiceUUIDsKey: @[[CBUUID UUIDWithString:KS_SERVICE_UUID]]
     }];
-    [[KSLog shared] info:@"蓝牙广播已启动（%@）", KSConfig.shared.deviceName];
+    [[KSLog shared] info:@"蓝牙广播已启动：%@（%@）", advName, KSConfig.shared.deviceName];
 }
 
 - (void)peripheralManager:(CBPeripheralManager *)peripheral
