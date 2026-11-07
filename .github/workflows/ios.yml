@@ -40,7 +40,7 @@ jobs:
         run: |
           cd ios
           set -o pipefail
-          make app VERSION="${GITHUB_REF_NAME:-1.0.0}" BUILD="${{ github.run_number }}" 2>&1 | tee /tmp/build.log
+          make app VERSION=1.0.1 BUILD="${{ github.run_number }}" 2>&1 | tee /tmp/build.log
 
       - name: 校验产物架构与最低系统
         run: |
@@ -64,7 +64,7 @@ jobs:
         run: |
           cd ios
           make ipa
-          make ipa-noext
+          # 已无扩展，不再产出 noext
           ls -la build/*.ipa
 
       - name: 上传 artifacts
@@ -83,15 +83,15 @@ jobs:
         if: success()
         run: |
           cp ios/build/KeShare.ipa "$RUNNER_TEMP/KeShare.ipa"
-          cp ios/build/KeShare-noext.ipa "$RUNNER_TEMP/KeShare-noext.ipa"
+
           cd "$RUNNER_TEMP"
           rm -rf pub && mkdir pub && cd pub
           git init -q
           git config user.name  "KeShare CI"
           git config user.email "ci@keshare.local"
           cp ../KeShare.ipa .
-          cp ../KeShare-noext.ipa .
-          git add KeShare.ipa KeShare-noext.ipa
+
+          git add KeShare.ipa
           git commit -qm "IPA build ${GITHUB_RUN_NUMBER} (${GITHUB_SHA:0:7})"
           git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" HEAD:artifacts
       # 失败时把编译日志写进 Issue（公开可读，方便排查）

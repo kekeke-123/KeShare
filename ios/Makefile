@@ -7,7 +7,7 @@
 # 需要：macOS + Xcode 命令行工具（iPhoneOS SDK、clang、swiftc、ld）
 
 APP        := KeShare
-VERSION    := 1.0.0
+VERSION    := 1.0.1
 BUILD      := 1
 
 MIN_IOS    := 15.0
