@@ -35,13 +35,7 @@ UIColor *KSSystemAccent(void);
 @protocol KSDiscoveryLink <KSDirectLink>
 @property (nonatomic, copy, nullable) void (^onPeerFound)(KSDevice *peer, id peripheral);
 @end
-/// KSServer 的发送/请求处理（实现在 KSNetServe.m）
-@interface KSServer (Serve)
-- (void)serveTransfer:(KSPendingTransfer *)pt onSocket:(int)fd;
-- (void)handleGetRequest:(NSDictionary *)msg link:(id<KSControlLink>)link;
-- (void)handlePutOffer:(NSDictionary *)msg link:(id<KSControlLink>)link;
-- (void)handleHashAck:(NSDictionary *)msg;
-@end
+
 /// KSServer 的蓝牙发现入口（实现在 KSNetData.m）
 @interface KSServer (Discovery)
 - (nullable id<KSDiscoveryLink>)bleLink;
@@ -74,6 +68,13 @@ NSString *KSIPv4StringLocal(void);
 - (void)removePendingForId:(NSString *)tid;
 @end
 
+/// KSServer 的发送/请求处理（实现在 KSNetServe.m）
+@interface KSServer (Serve)
+- (void)serveTransfer:(KSPendingTransfer *)pt onSocket:(int)fd;
+- (void)handleGetRequest:(NSDictionary *)msg link:(id<KSControlLink>)link;
+- (void)handlePutOffer:(NSDictionary *)msg link:(id<KSControlLink>)link;
+- (void)handleHashAck:(NSDictionary *)msg;
+@end
 #pragma mark - 数据接收端（定义在 KSSession.m）
 
 @interface KSDataReceiver : NSObject
