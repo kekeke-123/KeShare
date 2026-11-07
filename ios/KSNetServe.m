@@ -174,7 +174,8 @@
     }
 
     NSString *dest = pt.finalPath;
-    NSString *dataToken = msg[@"token"] ?: @"";\n    [KSDataReceiver receiveFromHost:host port:port token:dataToken
+    NSString *dataToken = msg[@"token"] ?: @"";
+    [KSDataReceiver receiveFromHost:host port:port token:dataToken
                          transferId:tid size:size destination:dest
                          onProgress:^(unsigned long long done) {
         KSTransfer *pub = pt.publicTransfer;
