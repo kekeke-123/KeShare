@@ -15,7 +15,7 @@ import time
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
-from .. import KSAPP_DISPLAY, KSAPP_NAME
+from .. import KSAPP_DISPLAY, KSAPP_NAME, KSAPP_VERSION
 from .. import clipboard, files, protocol
 from ..client import KSClient
 from . import glass
@@ -176,16 +176,17 @@ class KeShareApp(tk.Tk):
         tk.Label(brand, text="KeShare", bg=self.palette["bg2"],
                  fg=self.palette["fg"], font=glass.font(16, "bold"),
                  anchor="w").pack(fill="x", padx=22, pady=(18, 0))
-        tk.Label(brand, text="0.0.1 beta1", bg=self.palette["bg2"],
+        tk.Label(brand, text=KSAPP_DISPLAY, bg=self.palette["bg2"],
                  fg=self.palette["muted"], font=glass.font(9),
                  anchor="w").pack(fill="x", padx=22)
 
         self._nav_items = {}
         nav_specs = [
-            ("devices", "◉", "设备"),
-            ("files", "▤", "文件"),
-            ("settings", "⚙", "设置"),
-            ("about", "ⓘ", "关于"),
+            ("devices", "●", "设备"),
+            ("files", "■", "文件"),
+            ("transfers", "↕", "传输"),
+            ("settings", "◆", "设置"),
+            ("about", "◇", "关于"),
         ]
         for key, glyph, text in nav_specs:
             item = glass.SidebarItem(self.sidebar, self.palette, glyph, text,
@@ -196,7 +197,7 @@ class KeShareApp(tk.Tk):
         # 温控 / 材质提示区
         footer = tk.Frame(self.sidebar, bg=self.palette["bg2"])
         footer.pack(side="bottom", fill="x", pady=12)
-        self.glass_mode_var = tk.StringVar(value="材质：液态玻璃")
+        self.glass_mode_var = tk.StringVar(value="材质：Haze 磨砂")
         tk.Label(footer, textvariable=self.glass_mode_var, bg=self.palette["bg2"],
                  fg=self.palette["muted"], font=glass.font(9),
                  anchor="w").pack(fill="x", padx=22)
@@ -332,6 +333,18 @@ class KeShareApp(tk.Tk):
         scroll.grid(row=1, column=1, sticky="ns")
         self.device_tree.configure(yscrollcommand=scroll.set)
         self.device_tree.bind("<Double-1>", lambda event: self._connect_selected())
+
+        # 空状态提示（列表为空时覆盖在表格上）
+        self.device_empty = tk.Frame(tab, bg=self.palette["bg2"])
+        tk.Label(self.device_empty, text="附近没有设备",
+                 bg=self.palette["bg2"], fg=self.palette["fg"],
+                 font=glass.font(15, "bold")).pack(pady=(0, 6))
+        tk.Label(self.device_empty,
+                 text="让电脑开热点 KeShare-XXXX，或用「手动连接」填 IP",
+                 bg=self.palette["bg2"], fg=self.palette["muted"],
+                 font=glass.font(10)).pack()
+        tk.Button(self.device_empty, text="刷新",
+                  command=self._refresh_devices_clicked).pack(pady=(12, 0))
 
     def _build_files_tab(self):
         tab = self.files_tab
@@ -518,7 +531,18 @@ class KeShareApp(tk.Tk):
         self.device_tree.tag_configure("offline", foreground=self.palette["muted"])
         if selected and self.device_tree.exists(selected):
             self.device_tree.selection_set(selected)
+        self._update_device_empty_state(peers)
         self._update_channel_labels()
+
+    def _update_device_empty_state(self, peers):
+        """列表为空时显示空状态提示，有设备时隐藏。"""
+        empty = getattr(self, "device_empty", None)
+        if empty is None:
+            return
+        if peers:
+            empty.place_forget()
+        else:
+            empty.place(relx=0.5, rely=0.42, anchor="center")
 
     def _selected_device_did(self):
         selection = self.device_tree.selection()
