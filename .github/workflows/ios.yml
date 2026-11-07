@@ -1,4 +1,8 @@
-name: iOS (arm64)
+﻿name: iOS (arm64)
+
+permissions:
+  contents: read
+  issues: write
 
 on:
   push:
@@ -58,6 +62,7 @@ jobs:
             ios/build/KeShare.ipa
             ios/build/KeShare.app/**
           retention-days: 30
+          if-no-files-found: warn
 
       # 失败时把编译日志写进 Issue（公开可读，方便排查）
       - name: 失败时归档构建日志
@@ -97,3 +102,4 @@ jobs:
         with:
           files: ios/build/KeShare.ipa
           generate_release_notes: true
+
